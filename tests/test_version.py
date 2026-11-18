@@ -31,3 +31,14 @@ def test_module_runs_as_script() -> None:
         check=True,
     )
     assert result.stdout.strip() == f"{APP_NAME} {mcp_siigo_unofficial.__version__}"
+
+
+def test_pyproject_version_matches_the_package() -> None:
+    """The release tag is checked against __version__ (SemVer); pyproject uses PEP 440."""
+    import tomllib
+    from pathlib import Path
+
+    data = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text("utf-8"))
+    semver = mcp_siigo_unofficial.__version__
+    pep440 = re.sub(r"-(a|b|rc)\.(\d+)$", r"\1\2", semver)
+    assert data["project"]["version"] == pep440

@@ -1,0 +1,63 @@
+name: Release
+
+# Tag vX.Y.Z (or vX.Y.Z-rc.N for a pre-release): build every file, sign SHA256SUMS
+# with Ed25519 (plan D11), and publish the GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  check-version:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: The tag matches the app version
+        run: |
+          version=$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/mcp_siigo_unofficial/__init__.py)
+          test "v${version}" = "${GITHUB_REF_NAME}" || {
+            echo "Tag ${GITHUB_REF_NAME} does not match __version__ ${version}"; exit 1; }
+      - name: The release public key is committed
+        run: test -s src/mcp_siigo_unofficial/update/release_public_key.pem
+
+  build:
+    needs: check-version
+    uses: ./.github/workflows/build.yml
+
+  publish:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.5"
+          python-version: "3.12"
+      - uses: actions/download-artifact@v5
+        with:
+          pattern: release-*
+          path: dist-release
+          merge-multiple: true
+      - name: Sign SHA256SUMS
+        env:
+          RELEASE_SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          mkdir -p release reports
+          mv dist-release/size-report-* reports/
+          mv dist-release/* release/
+          uv run --no-dev python packaging/sign.py sign release
+          uv run --no-dev python packaging/sign.py verify release
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          case "${GITHUB_REF_NAME}" in *-*) flags+=(--prerelease) ;; esac
+          cat reports/size-report-*.md > release-notes.md
+          gh release create "${GITHUB_REF_NAME}" release/* reports/* \
+            --title "MCP Siigo Unofficial ${GITHUB_REF_NAME}" \
+            --notes-file release-notes.md "${flags[@]}"

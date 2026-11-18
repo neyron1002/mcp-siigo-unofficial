@@ -69,6 +69,10 @@ _STRINGS: dict[str, dict[Language, str]] = {
         "en": "MCP Siigo Unofficial is already running. Look for its icon in the tray.",
         "es": "MCP Siigo Unofficial ya está abierto. Busque su icono en la bandeja del sistema.",
     },
+    "mac.move_to_apps": {
+        "en": ("Drag MCP Siigo Unofficial to the Applications folder, then open it from there."),
+        "es": ("Arrastre MCP Siigo Unofficial a la carpeta Aplicaciones y ábralo desde allí."),
+    },
     # Write actions dialog
     "write.title": {"en": "Enable write actions?", "es": "¿Activar las acciones de escritura?"},
     "write.body": {

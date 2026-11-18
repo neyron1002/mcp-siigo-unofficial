@@ -41,6 +41,7 @@ def _parser() -> argparse.ArgumentParser:
     mode.add_argument("--run", action="store_true", help="start the tray app (used at login)")
     mode.add_argument("--selftest", action="store_true", help="check that this build works")
     parser.add_argument("--offline", action="store_true", help="--selftest without HTTPS")
+    mode.add_argument("--purge-data", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--port", type=int, default=None, help="HTTP port (with --serve)")
     return parser
 
@@ -92,6 +93,24 @@ def _stdio() -> int:
     return 0
 
 
+def _purge_data() -> int:
+    """Delete the vault and its keychain key (used by ``launcher --uninstall --purge-data``)."""
+    from pathlib import Path
+
+    from mcp_siigo_unofficial.paths import vault_path
+    from mcp_siigo_unofficial.vault import KeyringKeyStore, KeyStoreError
+
+    path = vault_path()
+    for suffix in ("", "-wal", "-shm"):
+        Path(f"{path}{suffix}").unlink(missing_ok=True)
+    try:
+        KeyringKeyStore().delete()
+    except KeyStoreError as exc:
+        sys.stderr.write(f"Could not delete the keychain key: {exc}\n")
+        return 1
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line. Without options, start the tray app."""
     args = _parser().parse_args(list(argv) if argv is not None else None)
@@ -104,6 +123,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         from mcp_siigo_unofficial.selftest import run_selftest
 
         return run_selftest(offline=args.offline)
+    if args.purge_data:
+        return _purge_data()
     if args.version:
         sys.stdout.write(f"{APP_NAME} {__version__}\n")
         return 0
