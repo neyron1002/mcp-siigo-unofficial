@@ -1,4 +1,4 @@
-"""Asynchronous Siigo REST client (httpx).
+"""Asynchronous Siigo REST client (httpx2).
 
 - ``POST /auth`` with the username and access key. The token is cached in memory
   and renewed 5 minutes before it expires (Siigo tokens last 24 hours, plan D7).
@@ -22,7 +22,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any, Self
 
-import httpx
+import httpx2
 
 from mcp_siigo_unofficial import __version__
 from mcp_siigo_unofficial.siigo.credentials import SiigoCredentials
@@ -67,7 +67,7 @@ def _validate_path(path: str) -> str:
     return path
 
 
-def _retry_after_seconds(response: httpx.Response) -> float:
+def _retry_after_seconds(response: httpx2.Response) -> float:
     value = response.headers.get("Retry-After")
     try:
         seconds = float(value) if value else DEFAULT_RETRY_AFTER_S
@@ -76,7 +76,7 @@ def _retry_after_seconds(response: httpx.Response) -> float:
     return max(0.0, min(seconds, MAX_RETRY_AFTER_S))
 
 
-def _decode(response: httpx.Response) -> Any:
+def _decode(response: httpx2.Response) -> Any:
     if response.status_code == 204 or not response.content:
         return None
     try:
@@ -101,7 +101,7 @@ class SiigoClient:
         *,
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT_S,
-        transport: httpx.AsyncBaseTransport | None = None,
+        transport: httpx2.AsyncBaseTransport | None = None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Sleep = asyncio.sleep,
     ) -> None:
@@ -110,7 +110,7 @@ class SiigoClient:
         self.timeout = timeout
         self._clock = clock
         self._sleep = sleep
-        self._http = httpx.AsyncClient(
+        self._http = httpx2.AsyncClient(
             base_url=self.base_url,
             timeout=timeout,
             transport=transport,
@@ -156,6 +156,10 @@ class SiigoClient:
             return True
         return self._clock() < self._token_expires_at - TOKEN_RENEW_MARGIN_S
 
+    def is_configured(self) -> bool:
+        """True if Siigo credentials are available."""
+        return self._credentials() is not None
+
     def invalidate_token(self) -> None:
         """Forget the cached token (for example, after the credentials change)."""
         self._token = None
@@ -182,7 +186,7 @@ class SiigoClient:
                     json={"username": credentials.username, "access_key": credentials.access_key},
                     headers={"Partner-Id": credentials.partner_id},
                 )
-            except httpx.HTTPError as exc:
+            except httpx2.HTTPError as exc:
                 raise SiigoError(
                     f"Network error while authenticating: {type(exc).__name__}",
                     code="network_error",
@@ -246,13 +250,13 @@ class SiigoClient:
         while True:
             try:
                 response = await self._send(method, path, query, json, headers)
-            except httpx.HTTPError as exc:
+            except httpx2.HTTPError as exc:
                 if is_read and not retried_read:
                     retried_read = True
                     log.warning("Network error on %s %s; retrying once", method, path)
                     await self._sleep(1.0)
                     continue
-                if isinstance(exc, httpx.TimeoutException):
+                if isinstance(exc, httpx2.TimeoutException):
                     raise SiigoError(
                         f"Siigo did not answer within {self.timeout:.0f} s ({method} {path}).",
                         status=408,
@@ -297,7 +301,7 @@ class SiigoClient:
         params: dict[str, Any],
         body: Any,
         extra_headers: dict[str, str] | None,
-    ) -> httpx.Response:
+    ) -> httpx2.Response:
         credentials = self._require_credentials()
         request_headers = dict(extra_headers or {})
         request_headers["Partner-Id"] = credentials.partner_id
