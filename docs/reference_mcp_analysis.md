@@ -1,8 +1,9 @@
-# Reference analysis: `existing_mcp/mcp_siigo` and public Siigo MCP servers
+# Reference analysis: the owner's first Siigo MCP server (`mcp_siigo`)
 
 - Date: 2026-11-18 (phase 0)
 - Plan: section 6 of [refined project inception v8](../prompts/2026.11.18_project_inception/2026.11.18_refined_project_inception_v8.md)
-- Licensing status: `mcp_siigo` has **no LICENSE file and no author**. Until the owner confirms they wrote it, this project reuses **ideas only**, and no code, catalog, or documentation from it goes into `src/`. The reference folder is ignored by git.
+- Authorship: the owner, Juan Manuel Pedraza, confirmed on 2026-11-18 that he wrote `mcp_siigo` ([raw prompt](../prompts/2026.11.18_unattended_execution/2026.11.18_raw_reference_is_own_mcp.md)). Its code, endpoint catalog, and docs may be adapted into `src/` under this project's MIT license.
+- Location: the owner keeps it locally in `references/existing_mcp/mcp_siigo/`. The `references/` folder is not part of the repository (it is ignored by git).
 
 ## 1. What `mcp_siigo` does
 
@@ -46,17 +47,3 @@
 | Docs size | All raw HTML and Markdown in the repository | Only the Markdown that tools need, compressed in the build; raw scraped files stay out of the release | D20. |
 | Packaging | Run from source with `uv run` | One self-installing file per OS, with signed updates (D8, D10–D12) | Ease of use for non-developers. |
 | Language | Spanish identifiers and messages | English code; English and Spanish UI (D17) | Public, international repository. |
-
-## 4. Public Siigo MCP servers (checked 2026-11-18)
-
-| Project | Stack | Transport | Credentials | Write safety | Notes |
-|---|---|---|---|---|---|
-| [`jdlar1/siigo-mcp`](https://github.com/jdlar1/siigo-mcp) | TypeScript, Node 24+, npm `@jdlar/siigo-mcp`, MIT | stdio; optional stateless Streamable HTTP on `127.0.0.1` (bearer token required outside loopback) | Environment variables (`.env` or the client config) | Separate read, write, and destructive executors; destructive annotations; strict Zod schemas; idempotency key for invoices; client-side rate limit | 71 operations in 15 resource families. A "compact" profile exposes 8 task tools and discovers the rest on demand. |
-| [`dsfaccini/siigo-mcp`](https://github.com/dsfaccini/siigo-mcp) | Python, `uvx siigo-mcp`, MIT | stdio; optional HTTP for multi-tenant hosting (credentials in request headers) | Environment variables, or HTTP headers per request | `SIIGO_MODE` = `read_only` (default) / `standard` / `full`; `DRY_RUN` mocks writes; the README says there is **no human-in-the-loop** in the MCP layer | Lazy tool loading to reduce the schema size. |
-| `castrillon89/mcpsiigo` | — | — | — | — | The GitHub page returned **404** on 2026-11-18 (removed, renamed, or private). Not compared. |
-
-### What we take from the comparison
-
-- From `jdlar1/siigo-mcp`: the **compact tool profile** (a few task tools plus on-demand discovery) is worth evaluating in phase 2, because 70+ tools crowd some AI clients. Also: idempotency keys for invoice creation and a client-side rate limit.
-- From `dsfaccini/siigo-mcp`: a read-only default is the common baseline. Our difference is the **human-in-the-loop at the server**, which neither public server enforces.
-- None of them offers an encrypted local vault, a tray UI for non-developers, or a single-file installer with signed updates. Those are this project's reasons to exist.
