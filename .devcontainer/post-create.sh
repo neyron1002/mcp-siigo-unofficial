@@ -15,6 +15,9 @@ if [ -f pyproject.toml ]; then
   uv sync --all-groups
 fi
 
+# Pre-commit checks (ruff and mypy) without an extra dependency.
+git config --local core.hooksPath .githooks
+
 echo
 echo "Dev container ready. Next, inside this container:"
 echo "  1. Sign in to Claude Code (open the Claude Code panel or run: claude)"

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Local pre-commit checks (enabled by .devcontainer/post-create.sh via core.hooksPath).
+# Runs only inside the dev container, like every other project command.
+set -euo pipefail
+uv run --quiet ruff check
+uv run --quiet ruff format --check
+uv run --quiet mypy src
