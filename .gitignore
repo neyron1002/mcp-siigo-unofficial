@@ -18,6 +18,8 @@ dist-release/
 .env
 *.key
 *.pem
+# The only key file in the repository: the public release key (never a private key).
+!src/mcp_siigo_unofficial/update/release_public_key.pem
 
 # OS and editor files
 .DS_Store
