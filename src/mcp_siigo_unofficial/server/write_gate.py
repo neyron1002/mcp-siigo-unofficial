@@ -58,11 +58,27 @@ class WriteSwitch:
             return self._enabled
 
     def reset_at_start(self) -> None:
-        """Turn the switch off (called when the app starts and when it quits)."""
+        """Turn the switch off (called when the app starts and when it quits; plan P9).
+
+        If writes were on, the change is recorded in the event log and the listeners
+        are told, like any other change.
+        """
+        if self._follow_vault:
+            return
         with self._lock:
+            was_on = self._enabled
             self._enabled = False
-        if self._vault is not None and not self._follow_vault:
+            listeners = list(self._listeners)
+        if self._vault is not None:
+            stored_on = self._vault.get_setting(SETTING_WRITE_ENABLED, False) is True
             self._vault.set_setting(SETTING_WRITE_ENABLED, False)
+            if was_on or stored_on:
+                self._vault.add_event(
+                    EVENT_WRITE_DISABLED, {"app_version": __version__, "reason": "app_restart"}
+                )
+        if was_on:
+            log.warning("Write actions disabled (app start or quit)")
+            self.notify(listeners, False)
 
     def add_listener(self, listener: Listener) -> None:
         with self._lock:

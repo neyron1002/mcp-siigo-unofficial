@@ -1,6 +1,8 @@
 """Command-line entry point.
 
+- (no option) or ``--run``: start the tray app.
 - ``--version``: print the version.
+- ``--selftest``: check that this build works (``--offline`` skips the HTTPS check).
 - ``--stdio``: MCP server over stdin/stdout (for clients that start the server
   themselves, such as Claude Desktop). Write actions follow the tray app's switch.
 - ``--serve``: headless Streamable HTTP server on 127.0.0.1 (development and CI;
@@ -36,6 +38,9 @@ def _parser() -> argparse.ArgumentParser:
     mode.add_argument("--version", action="store_true", help="print the version and exit")
     mode.add_argument("--stdio", action="store_true", help="run the MCP server over stdio")
     mode.add_argument("--serve", action="store_true", help="run the MCP HTTP server headless")
+    mode.add_argument("--run", action="store_true", help="start the tray app (used at login)")
+    mode.add_argument("--selftest", action="store_true", help="check that this build works")
+    parser.add_argument("--offline", action="store_true", help="--selftest without HTTPS")
     parser.add_argument("--port", type=int, default=None, help="HTTP port (with --serve)")
     return parser
 
@@ -88,15 +93,23 @@ def _stdio() -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run the command line. Without options, print the name and version."""
+    """Run the command line. Without options, start the tray app."""
     args = _parser().parse_args(list(argv) if argv is not None else None)
     logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
     if args.stdio:
         return _stdio()
     if args.serve:
         return _serve(args.port)
-    sys.stdout.write(f"{APP_NAME} {__version__}\n")
-    return 0
+    if args.selftest:
+        from mcp_siigo_unofficial.selftest import run_selftest
+
+        return run_selftest(offline=args.offline)
+    if args.version:
+        sys.stdout.write(f"{APP_NAME} {__version__}\n")
+        return 0
+    from mcp_siigo_unofficial.app.main import run_app
+
+    return run_app()
 
 
 if __name__ == "__main__":
