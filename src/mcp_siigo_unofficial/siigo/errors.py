@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-import httpx
+import httpx2
 
 
 class SiigoError(Exception):
@@ -40,7 +40,7 @@ class SiigoError(Exception):
         }
 
     @classmethod
-    def from_response(cls, response: httpx.Response, method: str, path: str) -> SiigoError:
+    def from_response(cls, response: httpx2.Response, method: str, path: str) -> SiigoError:
         """Build an error from a Siigo response body (``{"Errors": [{"Code", ...}]}``)."""
         errors: list[dict[str, Any]] = []
         message = f"Siigo answered HTTP {response.status_code} to {method} {path}"

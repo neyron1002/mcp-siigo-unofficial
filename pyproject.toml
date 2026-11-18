@@ -18,8 +18,9 @@ classifiers = [
 # Runtime dependencies arrive in the phase that needs them (plan D20, section 3.2).
 dependencies = [
     "cryptography>=46",
-    "httpx>=0.28",
+    "httpx2>=2.16",
     "keyring>=25.6",
+    "mcp>=2.3,<3",
     "platformdirs>=4.3",
 ]
 

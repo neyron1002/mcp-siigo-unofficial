@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-import httpx
+import httpx2
 import pytest
 
 from conftest import FakeClock, FakeSleep
@@ -166,14 +166,14 @@ async def test_network_errors(credentials: SiigoCredentials, fake_sleep: FakeSle
     mock = MockSiigo()
     calls = {"n": 0}
 
-    def flaky(request: httpx.Request) -> httpx.Response:
+    def flaky(request: httpx2.Request) -> httpx2.Response:
         if request.url.path.startswith("/v1/"):
             calls["n"] += 1
-            raise httpx.ConnectError("down", request=request)
+            raise httpx2.ConnectError("down", request=request)
         return mock.handle(request)
 
     async with SiigoClient(
-        lambda: credentials, transport=httpx.MockTransport(flaky), sleep=fake_sleep
+        lambda: credentials, transport=httpx2.MockTransport(flaky), sleep=fake_sleep
     ) as siigo:
         with pytest.raises(SiigoError, match="Network error") as info:
             await siigo.get("/v1/taxes")
@@ -189,12 +189,12 @@ async def test_network_errors(credentials: SiigoCredentials, fake_sleep: FakeSle
 async def test_timeout_is_reported(credentials: SiigoCredentials) -> None:
     mock = MockSiigo()
 
-    def slow(request: httpx.Request) -> httpx.Response:
+    def slow(request: httpx2.Request) -> httpx2.Response:
         if request.url.path.startswith("/v1/"):
-            raise httpx.ReadTimeout("slow", request=request)
+            raise httpx2.ReadTimeout("slow", request=request)
         return mock.handle(request)
 
-    async with SiigoClient(lambda: credentials, transport=httpx.MockTransport(slow)) as siigo:
+    async with SiigoClient(lambda: credentials, transport=httpx2.MockTransport(slow)) as siigo:
         with pytest.raises(SiigoError) as info:
             await siigo.post("/v1/invoices", {"a": 1})
     assert info.value.code == "request_timeout"
