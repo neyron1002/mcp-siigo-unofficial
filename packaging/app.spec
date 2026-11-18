@@ -22,7 +22,7 @@ EXE_NAME = "MCPSiigoUnofficial" if (WINDOWS or MACOS) else "mcp-siigo-unofficial
 EXCLUDES = [
     # Standard library parts the app never uses (plan 3.2, item 3).
     "tkinter", "_tkinter", "turtle", "turtledemo", "idlelib", "lib2to3", "ensurepip",
-    "pydoc", "pydoc_data", "unittest", "test", "doctest", "distutils", "venv",
+    "pydoc", "pydoc_data", "unittest", "test", "doctest", "venv",
     "xmlrpc", "curses", "dbm", "sqlite3.test", "lib2to3",
     # Development tools that must never reach the bundle.
     "setuptools", "pkg_resources", "pip", "pytest", "_pytest", "mypy", "ruff",

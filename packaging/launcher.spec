@@ -31,7 +31,7 @@ EXCLUDES = [
     "mcp_siigo_unofficial.app", "mcp_siigo_unofficial.server", "mcp_siigo_unofficial.siigo",
     "mcp_siigo_unofficial.vault", "mcp_siigo_unofficial.selftest",
     "tkinter", "_tkinter", "unittest", "test", "pydoc", "pydoc_data", "lib2to3", "idlelib",
-    "ensurepip", "distutils", "setuptools", "pkg_resources", "pip", "xmlrpc", "email",
+    "ensurepip", "setuptools", "pkg_resources", "pip", "xmlrpc", "email",
     "http", "urllib.request", "sqlite3", "_sqlite3", "asyncio", "multiprocessing",
     "curses", "ssl", "_ssl", "decimal", "_decimal", "ctypes.test",
 ]
