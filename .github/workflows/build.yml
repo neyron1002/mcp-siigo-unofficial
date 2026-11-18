@@ -44,10 +44,14 @@ jobs:
         run: uv run --no-sync python packaging/build.py --out dist-release
       - name: Smoke test in a clean temporary home (Linux, virtual screen)
         if: runner.os == 'Linux'
+        env:
+          MCP_SIIGO_UNOFFICIAL_GITHUB_TOKEN: ${{ github.token }}
         run: xvfb-run -a uv run --no-sync python packaging/smoke_test.py dist-release/mcp-siigo-unofficial-*
       - name: Smoke test in a clean temporary home
         if: runner.os != 'Linux'
         shell: bash
+        env:
+          MCP_SIIGO_UNOFFICIAL_GITHUB_TOKEN: ${{ github.token }}
         run: uv run --no-sync python packaging/smoke_test.py dist-release/MCPSiigoUnofficial-*
       - uses: actions/upload-artifact@v5
         with:

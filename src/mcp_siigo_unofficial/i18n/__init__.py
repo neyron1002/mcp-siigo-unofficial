@@ -69,6 +69,55 @@ _STRINGS: dict[str, dict[Language, str]] = {
         "en": "MCP Siigo Unofficial is already running. Look for its icon in the tray.",
         "es": "MCP Siigo Unofficial ya está abierto. Busque su icono en la bandeja del sistema.",
     },
+    # Updates
+    "update.latest": {
+        "en": "You have the latest version ({version}).",
+        "es": "Tiene la última versión ({version}).",
+    },
+    "update.available.title": {"en": "Update available", "es": "Actualización disponible"},
+    "update.available.body": {
+        "en": 'Version {version} is available. Use "Check for updates" to install it.',
+        "es": 'La versión {version} está disponible. Use "Buscar actualizaciones" para instalarla.',
+    },
+    "update.ask": {
+        "en": (
+            "Version {version} is available (you have {current}).\n\n"
+            "Download and install it now? The app restarts, and write actions stay off."
+        ),
+        "es": (
+            "La versión {version} está disponible (usted tiene la {current}).\n\n"
+            "¿Descargarla e instalarla ahora? La aplicación se reinicia y la escritura "
+            "queda desactivada."
+        ),
+    },
+    "update.manual": {
+        "en": (
+            "Version {version} is available. This copy cannot update itself; "
+            "download it from the releases page."
+        ),
+        "es": (
+            "La versión {version} está disponible. Esta copia no se actualiza sola; "
+            "descárguela de la página de versiones."
+        ),
+    },
+    "update.downloading": {
+        "en": "Downloading version {version} and checking its signature…",
+        "es": "Descargando la versión {version} y verificando su firma…",
+    },
+    "update.error": {
+        "en": "The update did not complete: {error}",
+        "es": "La actualización no terminó: {error}",
+    },
+    "update.done.title": {"en": "Updated", "es": "Actualizado"},
+    "update.done.body": {
+        "en": "MCP Siigo Unofficial was updated from {old} to {new}.",
+        "es": "MCP Siigo Unofficial se actualizó de la {old} a la {new}.",
+    },
+    "update.rollback.title": {"en": "Update rolled back", "es": "Actualización revertida"},
+    "update.rollback.body": {
+        "en": "Version {new} did not pass its self-test, so {old} was kept.",
+        "es": "La versión {new} no pasó su autoprueba; se mantuvo la {old}.",
+    },
     "mac.move_to_apps": {
         "en": ("Drag MCP Siigo Unofficial to the Applications folder, then open it from there."),
         "es": ("Arrastre MCP Siigo Unofficial a la carpeta Aplicaciones y ábralo desde allí."),

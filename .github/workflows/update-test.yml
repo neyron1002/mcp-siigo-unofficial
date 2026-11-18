@@ -1,0 +1,72 @@
+name: Update test
+
+# Plan phase 5: install an older published release and update it from GitHub to the
+# newest one, on every operating system. Called by release.yml after a release is
+# published; can also be run by hand.
+on:
+  workflow_call:
+    inputs:
+      from_tag: { type: string, required: true }
+      expect: { type: string, required: true }
+  workflow_dispatch:
+    inputs:
+      from_tag: { description: "Older release tag, for example v0.1.0-rc.1", required: true }
+      expect: { description: "Version the update must reach, for example 0.1.0-rc.2", required: true }
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    name: update (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, target: windows-x64 }
+          - { os: macos-latest, target: macos-arm64 }
+          - { os: ubuntu-22.04, target: linux-x64 }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.5"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Qt system libraries and a virtual screen (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb \
+            libegl1 libgl1 libfontconfig1 libdbus-1-3 libxkbcommon0 libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1
+      - name: Install dependencies
+        run: uv sync --locked
+      - name: Download the older release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FROM_TAG: ${{ inputs.from_tag }}
+        run: |
+          t="${{ matrix.target }}"
+          gh release download "$FROM_TAG" --dir old --pattern "SHA256SUMS*" \
+            --pattern "mcp-siigo-unofficial-*-$t" --pattern "MCPSiigoUnofficial-*-$t.*"
+          uv run --no-sync python packaging/sign.py verify old --present-only
+          ls -l old
+      - name: Update it from GitHub
+        shell: bash
+        env:
+          # Shared runners hit GitHub's anonymous API limit; the app sends this token
+          # only to api.github.com.
+          MCP_SIIGO_UNOFFICIAL_GITHUB_TOKEN: ${{ github.token }}
+          EXPECT: ${{ inputs.expect }}
+        run: |
+          file=$(ls old/*-${{ matrix.target }}* | head -1)
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a uv run --no-sync python packaging/update_test.py "$file" --expect "$EXPECT"
+          else
+            uv run --no-sync python packaging/update_test.py "$file" --expect "$EXPECT"
+          fi

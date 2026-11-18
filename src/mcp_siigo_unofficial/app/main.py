@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from collections.abc import Sequence
 
-from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
+from PySide6.QtCore import QLibraryInfo, QLocale, QTimer, QTranslator
 from PySide6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon
 
 from mcp_siigo_unofficial import __version__
@@ -30,6 +31,9 @@ from mcp_siigo_unofficial.vault import (
 )
 
 log = logging.getLogger(__name__)
+#: Set to 1 to turn off the quiet update check at start (tests, offline use).
+NO_UPDATE_CHECK_ENV = "MCP_SIIGO_UNOFFICIAL_NO_UPDATE_CHECK"
+UPDATE_CHECK_DELAY_MS = 20_000
 
 
 def _install_qt_translations(app: QApplication, language: str) -> None:
@@ -113,6 +117,12 @@ def run_app(argv: Sequence[str] | None = None) -> int:
     app.setQuitOnLastWindowClosed(not has_tray)
     if not has_tray or runtime.credentials() is None:
         tray.show_settings()
+
+    from mcp_siigo_unofficial.update.apply import take_update_result
+
+    tray.show_update_result(take_update_result())
+    if os.environ.get(NO_UPDATE_CHECK_ENV) != "1":
+        QTimer.singleShot(UPDATE_CHECK_DELAY_MS, lambda: tray.check_for_updates(interactive=False))
 
     app.aboutToQuit.connect(runtime.shutdown)
     return app.exec()

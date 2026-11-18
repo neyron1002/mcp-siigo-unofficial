@@ -33,11 +33,17 @@ APP_SCRIPT = (
 )
 
 
-def make_payload(tmp: Path, version: str, *, extra: dict[str, bytes] | None = None) -> Path:
+def make_payload(
+    tmp: Path,
+    version: str,
+    *,
+    extra: dict[str, bytes] | None = None,
+    app_script: str = APP_SCRIPT,
+) -> Path:
     """A fake release payload: a tiny 'app' script plus files, in a tar.xz."""
     source = tmp / f"source-{version}"
     source.mkdir(parents=True)
-    members = {"app": APP_SCRIPT.encode(), "_internal/data.txt": b"data", **(extra or {})}
+    members = {"app": app_script.encode(), "_internal/data.txt": b"data", **(extra or {})}
     raw = io.BytesIO()
     with tarfile.open(fileobj=raw, mode="w") as archive:
         for name, content in members.items():

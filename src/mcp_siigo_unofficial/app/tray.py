@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import os
+import threading
+
 from PySide6.QtCore import QObject, QUrl, Signal
 from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication
-from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
+from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
+from mcp_siigo_unofficial import __version__
 from mcp_siigo_unofficial.app.dialogs import AboutDialog, SettingsDialog, WriteActionsDialog
 from mcp_siigo_unofficial.app.icons import app_icon
 from mcp_siigo_unofficial.app.runtime import AppRuntime
@@ -18,6 +22,8 @@ class _Bridge(QObject):
 
     write_changed = Signal(bool)
     show_requested = Signal()
+    update_checked = Signal(object, object, bool)  # release or None, error or None, interactive
+    update_downloaded = Signal(object, object)  # path or None, error or None
 
 
 class TrayController(QObject):
@@ -36,6 +42,9 @@ class TrayController(QObject):
         self._bridge = _Bridge()
         self._bridge.write_changed.connect(self._on_write_changed)
         self._bridge.show_requested.connect(self.show_settings)
+        self._bridge.update_checked.connect(self._on_update_checked)
+        self._bridge.update_downloaded.connect(self._on_update_downloaded)
+        self._update_busy = False
         runtime.write_switch.add_listener(self._bridge.write_changed.emit)
         runtime.on_show_requested = self._bridge.show_requested.emit
 
@@ -53,7 +62,7 @@ class TrayController(QObject):
         self.autostart_action.setCheckable(True)
         self.autostart_action.triggered.connect(self.toggle_autostart)
         self.updates_action = QAction()
-        self.updates_action.triggered.connect(lambda: QDesktopServices.openUrl(QUrl(RELEASES_URL)))
+        self.updates_action.triggered.connect(lambda: self.check_for_updates(interactive=True))
         self.about_action = QAction()
         self.about_action.triggered.connect(self.show_about)
         self.quit_action = QAction()
@@ -171,6 +180,105 @@ class TrayController(QObject):
         self.about_dialog = AboutDialog(self.tr_)
         self.about_dialog.show()
         self.about_dialog.raise_()
+
+    # ------------------------------------------------------------------ updates
+    def check_for_updates(self, *, interactive: bool) -> None:
+        """Ask GitHub on a worker thread; the answer comes back on the main thread."""
+        if self._update_busy:
+            return
+        self._update_busy = True
+
+        def work() -> None:
+            from mcp_siigo_unofficial.update.releases import UpdateError, check_for_update
+
+            try:
+                self._bridge.update_checked.emit(check_for_update(), None, interactive)
+            except UpdateError as exc:
+                self._bridge.update_checked.emit(None, str(exc), interactive)
+
+        threading.Thread(target=work, name="update-check", daemon=True).start()
+
+    def _message(self, text: str, *, icon: QMessageBox.Icon = QMessageBox.Icon.Information) -> None:
+        QMessageBox(icon, self.tr_("app.name"), text).exec()
+
+    def _on_update_checked(self, release: object, error: object, interactive: bool) -> None:
+        from mcp_siigo_unofficial.update.apply import can_self_update
+        from mcp_siigo_unofficial.update.releases import Release
+
+        self._update_busy = False
+        tr = self.tr_
+        if error is not None:
+            if interactive:
+                self._message(tr("update.error", error=error), icon=QMessageBox.Icon.Warning)
+            return
+        if not isinstance(release, Release):
+            if interactive:
+                self._message(tr("update.latest", version=__version__))
+            return
+        if not interactive:
+            self.notify(
+                tr("update.available.title"), tr("update.available.body", version=release.version)
+            )
+            return
+        if not can_self_update():
+            self._message(tr("update.manual", version=release.version))
+            QDesktopServices.openUrl(QUrl(release.page_url or RELEASES_URL))
+            return
+        box = QMessageBox(
+            QMessageBox.Icon.Question,
+            tr("app.name"),
+            tr("update.ask", version=release.version, current=__version__),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if box.exec() != QMessageBox.StandardButton.Yes:
+            return
+        self._update_busy = True
+        self.notify(tr("update.available.title"), tr("update.downloading", version=release.version))
+
+        def work() -> None:
+            from mcp_siigo_unofficial.update.apply import clean_downloads, downloads_dir
+            from mcp_siigo_unofficial.update.releases import UpdateError, download_update
+
+            try:
+                clean_downloads()
+                self._bridge.update_downloaded.emit(download_update(release, downloads_dir()), None)
+            except UpdateError as exc:
+                self._bridge.update_downloaded.emit(None, str(exc))
+
+        threading.Thread(target=work, name="update-download", daemon=True).start()
+
+    def _on_update_downloaded(self, path: object, error: object) -> None:
+        from pathlib import Path
+
+        from mcp_siigo_unofficial.update.apply import start_update
+        from mcp_siigo_unofficial.update.releases import UpdateError
+
+        self._update_busy = False
+        if error is not None or not isinstance(path, Path):
+            self._message(self.tr_("update.error", error=error), icon=QMessageBox.Icon.Warning)
+            return
+        try:
+            start_update(path, pid=os.getpid(), start_app=True)
+        except (UpdateError, OSError) as exc:
+            self._message(self.tr_("update.error", error=exc), icon=QMessageBox.Icon.Warning)
+            return
+        self.app.quit()  # the installer waits for this process to exit
+
+    def show_update_result(self, result: dict[str, object] | None) -> None:
+        """Show the outcome of the update that ran before this start (once)."""
+        if not result:
+            return
+        old, new = result.get("from") or "-", result.get("to") or "-"
+        if result.get("ok"):
+            self.notify(
+                self.tr_("update.done.title"), self.tr_("update.done.body", old=old, new=new)
+            )
+        else:
+            self.notify(
+                self.tr_("update.rollback.title"),
+                self.tr_("update.rollback.body", old=old, new=new),
+                warning=True,
+            )
 
     def _on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         if reason in (
