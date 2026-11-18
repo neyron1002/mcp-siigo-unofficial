@@ -1,6 +1,6 @@
 # MCP Siigo Unofficial
 
-> **Status: in development.** There is no release yet. Phases 0 (foundation) and 1 (Siigo client and encrypted vault) are done; phase 2 (MCP server) is in progress.
+> **Status: in development.** There is no release yet. Phases 0–2 (foundation, Siigo client and vault, MCP server) are done; phase 3 (tray app) is in progress.
 
 **MCP Siigo Unofficial** connects AI assistants such as Claude, Codex, Copilot, and Gemini to your Siigo accounting data. I built it for a friend's company, and for anyone who needs it: business owners, accountants, and accounting professionals. It is free of charge.
 
@@ -51,7 +51,13 @@ uv run ruff format --check
 uv run mypy src
 uv run pytest
 uv build            # wheel and source distribution in dist/
+
+uv run mcp-siigo-unofficial              # tray app (needs a desktop)
+uv run mcp-siigo-unofficial --stdio      # MCP over stdio
+uv run mcp-siigo-unofficial --selftest   # check Qt, the vault, MCP, and HTTPS
 ```
+
+Note: Qt for Linux on ARM (the dev container on Apple Silicon) is pinned to PySide6-Essentials 6.8.0.2, the last release with wheels for glibc 2.35. Releases use 6.11 on Windows, macOS, and Ubuntu x64.
 
 ## How this project is built: AI orchestration
 

@@ -19,13 +19,13 @@ def test_version_is_semver() -> None:
 
 
 def test_main_prints_name_and_version(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main([]) == 0
+    assert main(["--version"]) == 0
     assert capsys.readouterr().out == f"{APP_NAME} {mcp_siigo_unofficial.__version__}\n"
 
 
 def test_module_runs_as_script() -> None:
     result = subprocess.run(
-        [sys.executable, "-m", "mcp_siigo_unofficial"],
+        [sys.executable, "-m", "mcp_siigo_unofficial", "--version"],
         capture_output=True,
         text=True,
         check=True,
