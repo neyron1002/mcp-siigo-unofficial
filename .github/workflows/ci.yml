@@ -88,3 +88,8 @@ jobs:
               scripts/with-test-keyring.sh uv run pytest -p no:cacheprovider
               xvfb-run -a uv run python -m mcp_siigo_unofficial --selftest
             '
+
+  build:
+    # The single-file build, its smoke test, and the size budget (plan phase 4).
+    needs: checks
+    uses: ./.github/workflows/build.yml

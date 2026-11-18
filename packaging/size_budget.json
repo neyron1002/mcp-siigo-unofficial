@@ -1,0 +1,8 @@
+{
+  "tolerance": 0.1,
+  "targets": {
+    "windows-x64": 51380224,
+    "macos-arm64": 30932992,
+    "linux-x64": 63438848
+  }
+}

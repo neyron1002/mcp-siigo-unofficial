@@ -135,7 +135,8 @@ def run_selftest(*, offline: bool = False) -> int:
             report["checks"][name] = result
             ok = ok and passed
     report["ok"] = ok
-    sys.stdout.write(json.dumps(report, indent=2) + "\n")
+    if sys.stdout is not None:  # a GUI build started with no stdout
+        sys.stdout.write(json.dumps(report, indent=2) + "\n")
     return 0 if ok else 1
 
 

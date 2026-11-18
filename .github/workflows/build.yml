@@ -1,0 +1,57 @@
+name: Build
+
+# Reusable: builds the single downloadable file on each operating system, proves it
+# works in a clean temporary home folder, and enforces the size budget (plan 3.2).
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30  # a hung smoke test fails fast instead of after 6 hours
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, target: windows-x64 }
+          - { os: macos-latest, target: macos-arm64 }
+          - { os: ubuntu-22.04, target: linux-x64 }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.5"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Qt system libraries and a virtual screen (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb \
+            libegl1 libgl1 libfontconfig1 libdbus-1-3 libxkbcommon0 libxkbcommon-x11-0 \
+            libxcb-cursor0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1
+      - name: Install dependencies
+        run: uv sync --group build --locked
+      - name: PyInstaller with a bootloader compiled from source
+        run: uv run --no-sync python packaging/build_bootloader.py
+      - name: Build
+        run: uv run --no-sync python packaging/build.py --out dist-release
+      - name: Smoke test in a clean temporary home (Linux, virtual screen)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a uv run --no-sync python packaging/smoke_test.py dist-release/mcp-siigo-unofficial-*
+      - name: Smoke test in a clean temporary home
+        if: runner.os != 'Linux'
+        shell: bash
+        run: uv run --no-sync python packaging/smoke_test.py dist-release/MCPSiigoUnofficial-*
+      - uses: actions/upload-artifact@v5
+        with:
+          name: release-${{ matrix.target }}
+          path: dist-release/*
+          if-no-files-found: error
+          retention-days: 14

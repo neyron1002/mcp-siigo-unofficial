@@ -72,6 +72,15 @@ def configure_autostart_once(runtime: AppRuntime, autostart: Autostart) -> None:
     runtime.vault.set_setting(SETTING_AUTOSTART_CONFIGURED, True)
 
 
+def running_from_disk_image(executable: str = sys.executable) -> bool:
+    """macOS: True when the app runs from a mounted DMG instead of Applications."""
+    return (
+        sys.platform == "darwin"
+        and getattr(sys, "frozen", False)
+        and executable.startswith("/Volumes/")
+    )
+
+
 def run_app(argv: Sequence[str] | None = None) -> int:
     app = QApplication(list(argv) if argv is not None else sys.argv[:1])
     app.setApplicationName("MCP Siigo Unofficial")
@@ -80,6 +89,10 @@ def run_app(argv: Sequence[str] | None = None) -> int:
     app.setWindowIcon(app_icon())
 
     tr = Translator()
+    if running_from_disk_image():
+        # Start at login needs a stable path (plan section 3).
+        QMessageBox(QMessageBox.Icon.Information, tr("app.name"), tr("mac.move_to_apps")).exec()
+        return 1
     runtime = _open_runtime(tr)
     if runtime is None:
         return 1

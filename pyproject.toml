@@ -33,6 +33,10 @@ Homepage = "https://github.com/neyron1002/mcp-siigo-unofficial"
 mcp-siigo-unofficial = "mcp_siigo_unofficial.__main__:main"
 
 [dependency-groups]
+build = [
+    "pyinstaller>=6.16",
+    "pyinstaller-hooks-contrib>=2026.10",
+]
 dev = [
     "ruff>=0.14",
     "mypy>=1.18",

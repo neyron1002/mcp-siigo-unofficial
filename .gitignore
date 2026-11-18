@@ -11,6 +11,7 @@ htmlcov/
 # Build output
 build/
 dist/
+dist-release/
 *.spec.bak
 
 # Local configuration and secrets

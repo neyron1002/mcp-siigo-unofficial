@@ -8,11 +8,14 @@ when the user asks; they are never logged.
 from __future__ import annotations
 
 import json
+import os
 import shlex
 import subprocess
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
+
+from mcp_siigo_unofficial.autostart import LAUNCHER_ENV
 
 SERVER_ID = "siigo"
 
@@ -26,6 +29,9 @@ class ClientSetup:
 
 def stdio_command() -> list[str]:
     """Command that starts the MCP server over stdio."""
+    launcher = os.environ.get(LAUNCHER_ENV)
+    if launcher:
+        return [launcher, "--stdio"]
     if getattr(sys, "frozen", False):
         return [sys.executable, "--stdio"]
     return [sys.executable, "-m", "mcp_siigo_unofficial", "--stdio"]

@@ -21,6 +21,8 @@ APP_ID = "mcp-siigo-unofficial"
 WINDOWS_VALUE = "MCPSiigoUnofficial"
 MACOS_LABEL = "com.neyron1002.mcp-siigo-unofficial"
 SETTING_AUTOSTART_CONFIGURED = "autostart.configured"
+#: Set by the single-file launcher: the stable path of the installed launcher.
+LAUNCHER_ENV = "MCP_SIIGO_UNOFFICIAL_LAUNCHER"
 
 
 class Autostart(Protocol):
@@ -145,9 +147,13 @@ def for_platform(platform: str = sys.platform) -> Autostart:
 def launch_command() -> list[str]:
     """The command that starts the tray app at login.
 
-    A frozen build runs itself with ``--run`` (phase 4 points this to the installed
-    launcher). From source, it runs the package with the current interpreter.
+    Started by the single-file launcher, it is the installed launcher (a stable path
+    that survives updates). A frozen app without it (the macOS ``.app``) runs itself.
+    From source, it runs the package with the current interpreter.
     """
+    launcher = os.environ.get(LAUNCHER_ENV)
+    if launcher:
+        return [launcher, "--run"]
     if getattr(sys, "frozen", False):
         return [sys.executable, "--run"]
     return [sys.executable, "-m", "mcp_siigo_unofficial"]
