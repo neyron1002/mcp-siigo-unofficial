@@ -61,3 +61,27 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" release/* reports/* \
             --title "MCP Siigo Unofficial ${GITHUB_REF_NAME}" \
             --notes-file release-notes.md "${flags[@]}"
+
+  find-previous:
+    needs: publish
+    runs-on: ubuntu-22.04
+    outputs:
+      from_tag: ${{ steps.find.outputs.from_tag }}
+      expect: ${{ steps.find.outputs.expect }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: The newest older release (the update test starts from it)
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=50" > releases.json
+          python3 packaging/previous_release.py releases.json "${GITHUB_REF_NAME}" | tee -a "$GITHUB_OUTPUT"
+
+  update-test:
+    needs: find-previous
+    if: needs.find-previous.outputs.from_tag != ''
+    uses: ./.github/workflows/update-test.yml
+    with:
+      from_tag: ${{ needs.find-previous.outputs.from_tag }}
+      expect: ${{ needs.find-previous.outputs.expect }}

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import os
 import shutil
 import subprocess
@@ -106,6 +107,14 @@ def smoke_launcher(artifact: Path, home: Path, env: dict[str, str], offline: boo
     check(result.returncode == 0, "the installed launcher runs the current version")
     tools = anyio.run(list_tools_over_stdio, str(launcher), ["--stdio"], env)
     check(tools == EXPECTED_TOOLS, f"--stdio lists {EXPECTED_TOOLS} tools (got {tools})")
+    # The updater's install path: self-test of the new version, then the switch.
+    result = run([str(artifact), "--update", "--no-start"], env)
+    check(result.returncode == 0, "--update runs the self-test and switches")
+    outcome = json.loads((home / "update-result.json").read_text(encoding="utf-8"))
+    check(outcome.get("ok") is True, f"the update result is ok ({outcome})")
+    # The release check against GitHub (signed downloads are tested in update_test.py).
+    result = run([str(launcher), "--update-now"], env)
+    check(result.returncode == 0, "--update-now reaches GitHub")
     result = run([str(launcher), "--uninstall"], env)
     check(result.returncode == 0, "--uninstall exits cleanly")
     check(not (home / "versions").exists(), "--uninstall removed the versions")

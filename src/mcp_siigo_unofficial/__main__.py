@@ -5,6 +5,8 @@
 - ``--selftest``: check that this build works (``--offline`` skips the HTTPS check).
 - ``--stdio``: MCP server over stdin/stdout (for clients that start the server
   themselves, such as Claude Desktop). Write actions follow the tray app's switch.
+- ``--update-now``: check GitHub for a newer release, download it, verify its
+  signature, and start the installer (no tray; used by CI and by scripts).
 - ``--serve``: headless Streamable HTTP server on 127.0.0.1 (development and CI;
   the tray app in phase 3 runs the same server). Write actions stay off.
 """
@@ -42,6 +44,15 @@ def _parser() -> argparse.ArgumentParser:
     mode.add_argument("--selftest", action="store_true", help="check that this build works")
     parser.add_argument("--offline", action="store_true", help="--selftest without HTTPS")
     mode.add_argument("--purge-data", action="store_true", help=argparse.SUPPRESS)
+    mode.add_argument(
+        "--update-now", action="store_true", help="download and install a newer release"
+    )
+    # macOS updater internals (the staged new .app replaces the old one).
+    mode.add_argument("--apply-update", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--wait-pid", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--target", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--from-version", default=None, help=argparse.SUPPRESS)
+    parser.add_argument("--no-start", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--port", type=int, default=None, help="HTTP port (with --serve)")
     return parser
 
@@ -111,6 +122,56 @@ def _purge_data() -> int:
     return 0
 
 
+def _update_now() -> int:
+    """Headless update: check, download, verify, and hand over to the installer."""
+    from mcp_siigo_unofficial.update.apply import (
+        can_self_update,
+        clean_downloads,
+        downloads_dir,
+        start_update,
+    )
+    from mcp_siigo_unofficial.update.releases import (
+        UpdateError,
+        check_for_update,
+        download_update,
+    )
+
+    try:
+        release = check_for_update()
+        if release is None:
+            sys.stdout.write(f"{APP_NAME} {__version__} is up to date.\n")
+            return 0
+        if not can_self_update():
+            sys.stderr.write(f"{release.version} is available: {release.page_url}\n")
+            return 1
+        clean_downloads()
+        path = download_update(release, downloads_dir())
+        start_update(path, pid=os.getpid(), start_app=False)
+    except UpdateError as exc:
+        sys.stderr.write(f"{exc}\n")
+        return 1
+    sys.stdout.write(f"Updating {__version__} -> {release.version} (signature verified).\n")
+    return 0
+
+
+def _apply_update(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from mcp_siigo_unofficial.update.apply import apply_macos_update, current_bundle
+
+    staged = current_bundle()
+    if staged is None or not args.target:
+        sys.stderr.write("--apply-update runs only inside a staged macOS app.\n")
+        return 2
+    return apply_macos_update(
+        staged,
+        Path(args.target),
+        wait_pid=args.wait_pid,
+        start=not args.no_start,
+        old=args.from_version,
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line. Without options, start the tray app."""
     args = _parser().parse_args(list(argv) if argv is not None else None)
@@ -125,6 +186,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_selftest(offline=args.offline)
     if args.purge_data:
         return _purge_data()
+    if args.update_now:
+        return _update_now()
+    if args.apply_update:
+        return _apply_update(args)
     if args.version:
         sys.stdout.write(f"{APP_NAME} {__version__}\n")
         return 0

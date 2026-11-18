@@ -121,3 +121,24 @@ def test_key_type_checks(key: Ed25519PrivateKey) -> None:
 )
 def test_qt_filter(path: str, kept: bool) -> None:
     assert keep(path) is kept
+
+
+def test_previous_release_for_the_update_test() -> None:
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).parents[1] / "packaging" / "previous_release.py"
+    spec = importlib.util.spec_from_file_location("previous_release", path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    releases = [
+        {"tag_name": "v0.1.0-rc.2"},
+        {"tag_name": "v0.1.0-rc.1"},
+        {"tag_name": "v0.1.0-rc.3", "draft": True},
+        {"tag_name": "nightly"},
+    ]
+    assert module.previous_tag(releases, "v0.1.0-rc.2") == "v0.1.0-rc.1"
+    assert module.previous_tag(releases, "v0.1.0") == "v0.1.0-rc.2"
+    assert module.previous_tag(releases, "v0.1.0-rc.1") is None

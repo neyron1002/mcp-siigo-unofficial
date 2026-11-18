@@ -13,6 +13,11 @@ Modes:
 - ``--run``: start the current version with no extraction (start at login);
 - ``--stdio``: run the current version as a stdio MCP server;
 - ``--selftest``: run the current version's self-test;
+- ``--update --wait-pid <pid> [--no-start]``: used by the app's updater. Wait for the
+  old app to exit, extract this version beside the old one, run its ``--selftest``,
+  and only then make it current and start it. If the self-test fails, delete the new
+  version and keep the old one (rollback);
+- ``--update-now``: passed to the app (check, download, verify, and update; for CI);
 - ``--uninstall [--purge-data]``: remove start at login and the installed versions
   (and, with ``--purge-data``, the vault and its keychain key).
 
@@ -31,6 +36,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,6 +49,9 @@ _WINDOWS = sys.platform.startswith("win")
 EXE_SUFFIX = ".exe" if _WINDOWS else ""
 CORE_NAME = f"launcher-core{EXE_SUFFIX}"
 INSTALLED_LAUNCHER_NAME = f"launcher{EXE_SUFFIX}"
+UPDATE_RESULT_NAME = "update-result.json"
+UPDATE_LOG_NAME = "update.log"
+SELFTEST_TIMEOUT = 300.0
 
 
 class LauncherError(Exception):
@@ -135,8 +144,12 @@ class Layout:
         return removed
 
 
-def install_payload(source: Path, layout: Layout, core_launcher: Path | None = None) -> str:
-    """Verify and extract the payload in ``source``; make it the current version."""
+def extract_version(source: Path, layout: Layout) -> Manifest:
+    """Verify the payload in ``source`` and extract it into ``versions/<version>``.
+
+    The current version does not change. Extraction goes to a ``.partial`` folder
+    that is renamed at the end, so a crash never leaves a half-installed version.
+    """
     manifest = Manifest.load(source / MANIFEST_NAME)
     payload = source / PAYLOAD_NAME
     if sha256_file(payload) != manifest.sha256:
@@ -151,24 +164,136 @@ def install_payload(source: Path, layout: Layout, core_launcher: Path | None = N
             archive.extractall(partial, filter="data")
         app_exe = partial / manifest.app_exe
         if not app_exe.is_file():
+            shutil.rmtree(partial, ignore_errors=True)
             raise LauncherError(f"The payload has no app executable at {manifest.app_exe}.")
         if not _WINDOWS:
             app_exe.chmod(app_exe.stat().st_mode | 0o755)
         manifest.dump(partial / MANIFEST_NAME)
         shutil.rmtree(target, ignore_errors=True)
         os.replace(partial, target)
-    if core_launcher is not None and core_launcher.is_file():
-        tmp = layout.launcher.with_name(layout.launcher.name + ".new")
-        shutil.copy2(core_launcher, tmp)
-        if not _WINDOWS:
-            tmp.chmod(tmp.stat().st_mode | 0o755)
+    return manifest
+
+
+def install_core_launcher(core_launcher: Path | None, layout: Layout, attempts: int = 20) -> None:
+    """Copy the small launcher to its installed place (retry while it is still running)."""
+    if core_launcher is None or not core_launcher.is_file():
+        return
+    tmp = layout.launcher.with_name(layout.launcher.name + ".new")
+    shutil.copy2(core_launcher, tmp)
+    if not _WINDOWS:
+        tmp.chmod(tmp.stat().st_mode | 0o755)
+    for attempt in range(attempts):
         try:
             os.replace(tmp, layout.launcher)
-        except PermissionError:  # Windows: the installed launcher is running (--run)
-            tmp.unlink(missing_ok=True)
-    layout.set_current(manifest.version)
+            return
+        except PermissionError:  # Windows: the installed launcher is still running
+            if attempt + 1 < attempts:
+                time.sleep(0.5)
+    tmp.unlink(missing_ok=True)
+
+
+def activate(version: str, layout: Layout, core_launcher: Path | None) -> None:
+    install_core_launcher(core_launcher, layout)
+    layout.set_current(version)
     layout.prune()
+
+
+def install_payload(source: Path, layout: Layout, core_launcher: Path | None = None) -> str:
+    """Verify and extract the payload in ``source``; make it the current version."""
+    manifest = extract_version(source, layout)
+    activate(manifest.version, layout, core_launcher)
     return manifest.version
+
+
+def wait_for_pid(pid: int, timeout: float = 120.0) -> bool:
+    """Wait until process ``pid`` has exited. True if it did within ``timeout``."""
+    deadline = time.monotonic() + timeout
+    if _WINDOWS:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined,unused-ignore]
+        synchronize = 0x00100000
+        handle = kernel32.OpenProcess(synchronize, False, pid)
+        if not handle:
+            return True  # no such process (already gone)
+        try:
+            wait_object_0 = 0
+            result = kernel32.WaitForSingleObject(handle, int(timeout * 1000))
+            return bool(result == wait_object_0)
+        finally:
+            kernel32.CloseHandle(handle)
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        except PermissionError:
+            pass  # exists, owned by someone else
+        time.sleep(0.2)
+    return False
+
+
+def write_update_result(root: Path, *, old: str | None, new: str, ok: bool, detail: str) -> None:
+    """Leave the outcome for the app, which shows it once on its next start."""
+    root.mkdir(parents=True, exist_ok=True)
+    data = {"from": old, "to": new, "ok": ok, "detail": detail, "time": int(time.time())}
+    (root / UPDATE_RESULT_NAME).write_text(json.dumps(data) + "\n", encoding="utf-8")
+
+
+def run_selftest(exe: Path, env: dict[str, str], log: Path) -> bool:
+    """Run ``exe --selftest --offline`` and append its output to ``log``."""
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("a", encoding="utf-8") as handle:
+        handle.write(f"\n== {time.strftime('%Y-%m-%d %H:%M:%S')} self-test of {exe}\n")
+        handle.flush()
+        try:
+            result = subprocess.run(  # noqa: S603
+                [str(exe), "--selftest", "--offline"],
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=handle,
+                stderr=handle,
+                timeout=SELFTEST_TIMEOUT,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            handle.write(f"self-test could not run: {exc}\n")
+            return False
+        handle.write(f"exit code {result.returncode}\n")
+        return result.returncode == 0
+
+
+def update(layout: Layout, source: Path, *, wait_pid: int | None, start: bool) -> int:
+    """``--update``: install the payload in ``source`` with a self-test and rollback."""
+    manifest = Manifest.load(source / MANIFEST_NAME)
+    old = layout.current_version()
+    if wait_pid is not None and not wait_for_pid(wait_pid):
+        raise LauncherError(f"The running app (process {wait_pid}) did not exit; update stopped.")
+    new_was_installed = layout.is_installed(manifest.version)
+    try:
+        extract_version(source, layout)
+        passed = run_selftest(
+            layout.app_exe(manifest.version),
+            child_environment(layout),
+            layout.root / UPDATE_LOG_NAME,
+        )
+    except (LauncherError, OSError, tarfile.TarError) as exc:
+        passed, detail = False, str(exc)
+    else:
+        detail = "self-test passed" if passed else f"self-test failed (see {UPDATE_LOG_NAME})"
+    if not passed:
+        # Rollback: the old version stays current; remove what this update added.
+        if not new_was_installed and manifest.version != old:
+            shutil.rmtree(layout.version_dir(manifest.version), ignore_errors=True)
+        write_update_result(layout.root, old=old, new=manifest.version, ok=False, detail=detail)
+        if start and old and layout.is_installed(old):
+            run_app(layout, ["--run"], wait=False)
+        return 1
+    activate(manifest.version, layout, source / CORE_NAME)
+    write_update_result(layout.root, old=old, new=manifest.version, ok=True, detail=detail)
+    if start:
+        run_app(layout, ["--run"], wait=False)
+    return 0
 
 
 def child_environment(layout: Layout) -> dict[str, str]:
@@ -260,10 +385,29 @@ def _report(message: str) -> None:
         ctypes.windll.user32.MessageBoxW(None, message, "MCP Siigo Unofficial", 0x10)  # type: ignore[attr-defined,unused-ignore]
 
 
+def _option_value(args: list[str], name: str) -> str | None:
+    if name in args:
+        index = args.index(name)
+        if index + 1 < len(args):
+            return args[index + 1]
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     layout = Layout()
     try:
+        if "--update" in args:
+            source = bundle_dir()
+            if source is None or not (source / PAYLOAD_NAME).is_file():
+                raise LauncherError("--update needs the downloaded file, which has the payload.")
+            pid = _option_value(args, "--wait-pid")
+            return update(
+                layout,
+                source,
+                wait_pid=int(pid) if pid is not None else None,
+                start="--no-start" not in args,
+            )
         if "--uninstall" in args:
             return uninstall(layout, purge_data="--purge-data" in args)
         if "--version" in args:
@@ -287,6 +431,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_app(layout, ["--stdio"], wait=True)
         if "--selftest" in args:
             return run_app(layout, args, wait=True)
+        if "--update-now" in args:
+            return run_app(layout, ["--update-now"], wait=True)
         return run_app(layout, ["--run"], wait=False)
     except (LauncherError, OSError, ValueError, KeyError) as exc:
         _report(f"MCP Siigo Unofficial: {exc}")

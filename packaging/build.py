@@ -16,7 +16,6 @@ import hashlib
 import json
 import lzma
 import os
-import platform
 import shutil
 import subprocess
 import sys
@@ -27,35 +26,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from mcp_siigo_unofficial import __version__  # noqa: E402
+from mcp_siigo_unofficial.update.assets import artifact_name, target  # noqa: E402
 
 WINDOWS = sys.platform.startswith("win")
 MACOS = sys.platform == "darwin"
 APP_NAME = "MCP Siigo Unofficial"
 BUDGET_FILE = ROOT / "packaging" / "size_budget.json"
 BUDGET_TOLERANCE = 0.10
-
-
-def target() -> str:
-    """Release target name, for example ``windows-x64`` or ``macos-arm64``."""
-    system = "windows" if WINDOWS else "macos" if MACOS else "linux"
-    machine = platform.machine().lower()
-    arch = (
-        "x64"
-        if machine in {"x86_64", "amd64"}
-        else "arm64"
-        if machine in {"arm64", "aarch64"}
-        else machine
-    )
-    return f"{system}-{arch}"
-
-
-def artifact_name(version: str = __version__) -> str:
-    t = target()
-    if WINDOWS:
-        return f"MCPSiigoUnofficial-{version}-{t}.exe"
-    if MACOS:
-        return f"MCPSiigoUnofficial-{version}-{t}.dmg"
-    return f"mcp-siigo-unofficial-{version}-{t}"
 
 
 def run(command: list[str], **env: str) -> None:

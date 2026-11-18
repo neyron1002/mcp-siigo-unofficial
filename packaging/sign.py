@@ -70,13 +70,19 @@ def sign_dir(directory: Path) -> int:
     return 0
 
 
-def verify_dir(directory: Path) -> int:
+def verify_dir(directory: Path, *, present_only: bool = False) -> int:
     sums = (directory / signature.SUMS_NAME).read_bytes()
     sig = (directory / signature.SIGNATURE_NAME).read_bytes()
     signature.verify(sums, sig)
+    checked = 0
     for name in signature.parse_sha256sums(sums):
+        if present_only and not (directory / name).exists():
+            continue
         signature.verify_file(directory / name, sums, sig)
+        checked += 1
         print(f"ok  {name}")
+    if checked == 0:
+        raise SystemExit("No file listed in SHA256SUMS was found.")
     return 0
 
 
@@ -86,13 +92,15 @@ def main() -> int:
     gen = sub.add_parser("generate")
     gen.add_argument("--private-out", type=Path, required=True)
     sub.add_parser("sign").add_argument("directory", type=Path)
-    sub.add_parser("verify").add_argument("directory", type=Path)
+    ver = sub.add_parser("verify")
+    ver.add_argument("directory", type=Path)
+    ver.add_argument("--present-only", action="store_true", help="skip files not downloaded")
     args = parser.parse_args()
     if args.command == "generate":
         return generate(args.private_out)
     if args.command == "sign":
         return sign_dir(args.directory)
-    return verify_dir(args.directory)
+    return verify_dir(args.directory, present_only=args.present_only)
 
 
 if __name__ == "__main__":

@@ -94,12 +94,22 @@ def verify(sums: bytes, signature: bytes, public_key: Ed25519PublicKey | None = 
 
 
 def verify_file(
-    path: Path, sums: bytes, signature: bytes, public_key: Ed25519PublicKey | None = None
+    path: Path,
+    sums: bytes,
+    signature: bytes,
+    public_key: Ed25519PublicKey | None = None,
+    *,
+    name: str | None = None,
 ) -> None:
-    """Verify the signature, then that ``path`` matches its signed checksum."""
+    """Verify the signature, then that ``path`` matches its signed checksum.
+
+    ``name`` is the file's name in ``SHA256SUMS`` when it differs from ``path.name``
+    (a download still in its ``.partial`` file).
+    """
     verify(sums, signature, public_key)
-    expected = parse_sha256sums(sums).get(path.name)
+    listed = name or path.name
+    expected = parse_sha256sums(sums).get(listed)
     if expected is None:
-        raise SignatureError(f"{path.name} is not listed in {SUMS_NAME}.")
+        raise SignatureError(f"{listed} is not listed in {SUMS_NAME}.")
     if sha256_file(path) != expected:
-        raise SignatureError(f"{path.name} does not match its signed SHA-256.")
+        raise SignatureError(f"{listed} does not match its signed SHA-256.")
