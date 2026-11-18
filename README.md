@@ -1,6 +1,6 @@
 # MCP Siigo Unofficial
 
-> **Status: in development.** There is no release yet. Phase 0 (foundation) is in progress.
+> **Status: in development.** There is no release yet. Phase 0 (foundation) is done; phase 1 (Siigo client and encrypted vault) is in progress.
 
 **MCP Siigo Unofficial** connects AI assistants such as Claude, Codex, Copilot, and Gemini to your Siigo accounting data. I built it for a friend's company, and for anyone who needs it: business owners, accountants, and accounting professionals. It is free of charge.
 
