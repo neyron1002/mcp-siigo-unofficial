@@ -31,8 +31,9 @@ def stdio_command() -> list[str]:
     return [sys.executable, "-m", "mcp_siigo_unofficial", "--stdio"]
 
 
-def _shell_join(parts: Sequence[str]) -> str:
-    if sys.platform.startswith("win"):
+def _shell_join(parts: Sequence[str], platform: str = sys.platform) -> str:
+    """Quote a command for the user's shell (cmd.exe on Windows, POSIX elsewhere)."""
+    if platform.startswith("win"):
         return subprocess.list2cmdline(list(parts))
     return " ".join(shlex.quote(p) for p in parts)
 
