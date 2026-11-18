@@ -16,7 +16,12 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
 ]
 # Runtime dependencies arrive in the phase that needs them (plan D20, section 3.2).
-dependencies = []
+dependencies = [
+    "cryptography>=46",
+    "httpx>=0.28",
+    "keyring>=25.6",
+    "platformdirs>=4.3",
+]
 
 [project.urls]
 Homepage = "https://github.com/neyron1002/mcp-siigo-unofficial"
@@ -68,6 +73,10 @@ warn_unreachable = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["tests"]
+markers = [
+    "real_keyring: uses the real OS keychain (set MCP_SIIGO_TEST_REAL_KEYRING=1)",
+]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 
 [tool.coverage.run]
