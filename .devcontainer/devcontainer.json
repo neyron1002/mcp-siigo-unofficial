@@ -1,0 +1,44 @@
+{
+  // Development container for MCP Siigo Unofficial.
+  // Isolation rule (owner): the ONLY host path shared with the container is this
+  // workspace folder. No home folder, no Claude config, no SSH/GPG agents,
+  // no Docker socket. Sign in to Claude Code and GitHub inside the container.
+  "name": "MCP Siigo Unofficial (dev)",
+  "build": { "dockerfile": "Dockerfile" },
+
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "workspaceFolder": "/workspace",
+  "mounts": [],
+
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+
+  "remoteUser": "vscode",
+  "containerEnv": {
+    // Virtual environment lives in the container, not on the host disk.
+    "UV_PROJECT_ENVIRONMENT": "/home/vscode/.venv"
+  },
+  "remoteEnv": {
+    // Do not use host agents forwarded by the editor.
+    "SSH_AUTH_SOCK": "",
+    "GPG_AGENT_INFO": ""
+  },
+
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "ms-python.mypy-type-checker"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/home/vscode/.venv/bin/python",
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  }
+}

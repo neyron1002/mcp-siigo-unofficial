@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build output
+build/
+dist/
+*.spec.bak
+
+# Local configuration and secrets
+.env
+*.key
+*.pem
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+
+# Third-party reference code (local only; see references/README.md)
+references/existing_mcp/*
+!references/existing_mcp/.gitkeep
