@@ -1,0 +1,75 @@
+[project]
+name = "mcp-siigo-unofficial"
+version = "0.0.1"
+description = "Unofficial MCP server for the Siigo API, in a portable tray app. Free, no warranty, not affiliated with Siigo S.A.S."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Juan Manuel Pedraza" }]
+requires-python = ">=3.12,<3.13"
+keywords = ["mcp", "siigo", "model-context-protocol", "pyside6", "colombia"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+]
+# Runtime dependencies arrive in the phase that needs them (plan D20, section 3.2).
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/neyron1002/mcp-siigo-unofficial"
+
+[project.scripts]
+mcp-siigo-unofficial = "mcp_siigo_unofficial.__main__:main"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14",
+    "mypy>=1.18",
+    "pytest>=8.4",
+    "pytest-cov>=7.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = ["references"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "I",       # isort
+    "B",       # bugbear
+    "UP",      # pyupgrade
+    "SIM",     # simplify
+    "RUF",     # ruff-specific
+    "S",       # bandit (security)
+    "C4",      # comprehensions
+    "PT",      # pytest style
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+mypy_path = "src"
+warn_unreachable = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+
+[tool.coverage.run]
+source = ["mcp_siigo_unofficial"]
+branch = true

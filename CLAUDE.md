@@ -9,7 +9,7 @@ Rules for every AI session in this repository. The approved plan is the source o
 2. **Smallest build.** The release file includes only the libraries, Qt modules, and plugins the app needs (plan section 3.2). Every new runtime dependency needs a size justification in its pull request. No UPX. Bytecode optimize level 1, never 2 (FastMCP reads tool descriptions from docstrings).
 3. **Write safety.** Siigo write tools are behind the "Write actions" switch: off by default, and off again after every restart. Turning it on needs the warning dialog and an acceptance of responsibility. Every write needs the user's approval, through elicitation or a one-time `confirmation_id` that the server enforces (plan section 5.1). Never weaken this.
 4. **Secrets.** Never commit, log, or print Siigo credentials, tokens, the vault master key, or the Ed25519 private key. Real Siigo credentials are typed only by the owner, in the app's Settings dialog.
-5. **References.** `references/existing_mcp/` is local reference material, ignored by git. Do not copy its code into `src/` unless the owner confirmed authorship (see the kickoff prompt). Otherwise, reuse ideas only.
+5. **References.** `references/` is local reference material, ignored by git. `references/existing_mcp/mcp_siigo` is the owner's own earlier Siigo MCP server (authorship confirmed on 2026-11-18): its code, catalog, and docs may be adapted into `src/` under MIT. Do not research or compare other people's public servers unless the owner asks. Analysis: `docs/reference_mcp_analysis.md`.
 6. **Prompts log.** Save every owner prompt verbatim in `prompts/<YYYY.MM.DD>_<topic>/<YYYY.MM.DD>_raw_<topic>.md`, and save refinements as `..._refined_<topic>_vN.md`.
 
 ## Workflow

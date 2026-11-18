@@ -23,6 +23,5 @@ dist/
 Thumbs.db
 .idea/
 
-# Third-party reference code (local only; see references/README.md)
-references/existing_mcp/*
-!references/existing_mcp/.gitkeep
+# Local reference material (the owner's earlier MCP server); not part of the repository
+references/

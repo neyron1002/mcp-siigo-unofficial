@@ -1,3 +1,0 @@
-# Third-party reference code stays local; only our notes are versioned.
-existing_mcp/*
-!existing_mcp/.gitkeep

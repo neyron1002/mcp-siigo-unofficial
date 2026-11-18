@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macos-latest is arm64 (Apple Silicon).
+        os: [ubuntu-22.04, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.9.5"
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install dependencies
+        run: uv sync --all-groups --locked
+      - name: Ruff lint
+        run: uv run ruff check
+      - name: Ruff format
+        run: uv run ruff format --check
+      - name: Mypy (strict)
+        run: uv run mypy src
+      - name: Pytest
+        run: uv run pytest --cov --cov-report=term-missing
+      - name: Build wheel and sdist
+        run: uv build
+
+  devcontainer:
+    # CI parity: build the dev container image and run the tests inside it.
+    name: tests in dev container
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build the dev container image
+        run: docker build -t mcp-siigo-dev -f .devcontainer/Dockerfile .devcontainer
+      - name: Run checks inside the image
+        # The runner user owns the checkout; run as that user with writable
+        # temporary HOME, cache, and virtual environment paths.
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -e HOME=/tmp/home \
+            -e UV_CACHE_DIR=/tmp/uv-cache \
+            -e UV_PROJECT_ENVIRONMENT=/tmp/venv \
+            -v "$PWD:/workspace" -w /workspace \
+            mcp-siigo-dev \
+            bash -euo pipefail -c '
+              uv sync --all-groups --locked
+              uv run ruff check
+              uv run ruff format --check
+              uv run mypy src
+              uv run pytest -p no:cacheprovider
+            '
