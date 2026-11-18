@@ -18,6 +18,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import shutil
 import subprocess
@@ -37,13 +38,42 @@ def check(condition: bool, message: str) -> None:
     print(f"ok  {message}", flush=True)
 
 
+def kill_tree(process: subprocess.Popen[str]) -> None:
+    if sys.platform.startswith("win"):
+        subprocess.run(  # noqa: S603
+            ["taskkill", "/T", "/F", "/PID", str(process.pid)],  # noqa: S607
+            capture_output=True,
+            check=False,
+        )
+    else:
+        import signal
+
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGKILL)
+    process.kill()
+
+
 def run(
     command: list[str], env: dict[str, str], timeout: float = 300
 ) -> subprocess.CompletedProcess[str]:
     print("+", " ".join(command), flush=True)
-    result = subprocess.run(  # noqa: S603
-        command, env=env, capture_output=True, text=True, timeout=timeout, check=False
+    process = subprocess.Popen(  # noqa: S603
+        command,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=not sys.platform.startswith("win"),
     )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        # Kill the whole tree: the app is a grandchild that holds the pipes open.
+        kill_tree(process)
+        stdout, stderr = process.communicate(timeout=30)
+        stderr += f"\nTIMEOUT after {timeout} s"
+    result = subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
     if result.stdout:
         print(result.stdout[-4000:])
     if result.stderr:

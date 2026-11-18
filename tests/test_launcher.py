@@ -179,3 +179,30 @@ def test_launch_and_stdio_commands_use_the_installed_launcher(
     monkeypatch.setenv(LAUNCHER_ENV, "/home/u/.local/share/mcp-siigo-unofficial/launcher")
     assert launch_command() == ["/home/u/.local/share/mcp-siigo-unofficial/launcher", "--run"]
     assert stdio_command() == ["/home/u/.local/share/mcp-siigo-unofficial/launcher", "--stdio"]
+
+
+def test_run_app_passes_its_own_streams(
+    tmp_path: Path, layout: Layout, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A GUI launcher on Windows must hand its pipes to the app explicitly."""
+    install_payload(make_payload(tmp_path, "1.0.0"), layout)
+    seen: dict[str, object] = {}
+
+    class Done:
+        returncode = 0
+
+    def fake_run(command: list[str], **kwargs: object) -> Done:
+        seen.update(kwargs)
+        return Done()
+
+    stdin = open(os.devnull, encoding="utf-8")  # noqa: SIM115 - closed below
+    try:
+        monkeypatch.setattr(sys, "stdin", stdin)
+        monkeypatch.setattr(sys, "stdout", None)  # no stdout at all: inherit the default
+        monkeypatch.setattr(core.subprocess, "run", fake_run)
+        assert core.run_app(layout, ["--stdio"], wait=True) == 0
+    finally:
+        stdin.close()
+    assert seen["stdin"] is stdin
+    assert seen["stdout"] is None
+    assert "stderr" in seen

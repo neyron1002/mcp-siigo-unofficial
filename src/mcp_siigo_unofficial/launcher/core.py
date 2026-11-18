@@ -180,6 +180,32 @@ def child_environment(layout: Layout) -> dict[str, str]:
     return env
 
 
+def _usable(stream: object) -> object | None:
+    """``stream`` when it has a real file descriptor, else None (inherit the default)."""
+    try:
+        stream.fileno()  # type: ignore[attr-defined]
+    except (AttributeError, OSError, ValueError):
+        return None
+    return stream
+
+
+def inherited_streams() -> dict[str, object | None]:
+    """This process's stdin, stdout, and stderr, passed to the app explicitly.
+
+    The launcher has no console on Windows (a GUI program), and Windows does not
+    give a GUI child the parent's pipes unless they are passed explicitly. Without
+    this, ``--stdio`` and ``--selftest`` would run with no stdin or stdout.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        with contextlib.suppress(AttributeError, OSError, ValueError):
+            stream.flush()
+    return {
+        "stdin": _usable(sys.stdin),
+        "stdout": _usable(sys.stdout),
+        "stderr": _usable(sys.stderr),
+    }
+
+
 def run_app(layout: Layout, args: list[str], *, wait: bool) -> int:
     version = layout.current_version()
     if version is None or not layout.is_installed(version):
@@ -187,7 +213,16 @@ def run_app(layout: Layout, args: list[str], *, wait: bool) -> int:
     command = [str(layout.app_exe(version)), *args]
     env = child_environment(layout)
     if wait:
-        return subprocess.run(command, env=env, check=False).returncode  # noqa: S603
+        streams = inherited_streams()
+        completed = subprocess.run(  # noqa: S603
+            command,
+            env=env,
+            check=False,
+            stdin=streams["stdin"],  # type: ignore[arg-type]
+            stdout=streams["stdout"],  # type: ignore[arg-type]
+            stderr=streams["stderr"],  # type: ignore[arg-type]
+        )
+        return completed.returncode
     if _WINDOWS:
         flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
             subprocess, "CREATE_NEW_PROCESS_GROUP", 0
