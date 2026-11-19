@@ -1,7 +1,9 @@
 """Print ``from_tag=<tag>`` and ``expect=<version>`` for the update test (GitHub output).
 
 Reads the GitHub releases JSON and picks the newest published release older than
-the given tag. Prints ``from_tag=`` (empty) when there is none.
+the given tag that would be offered the update: stable builds only see stable
+releases, so a pre-release tag starts from the newest older **pre-release**.
+Prints ``from_tag=`` (empty) when there is none.
 
 Usage::
 
@@ -22,11 +24,14 @@ from mcp_siigo_unofficial.update.versions import version_key
 
 def previous_tag(releases: list[dict[str, object]], tag: str) -> str | None:
     current = version_key(tag)
+    prerelease = "-" in tag
     older = []
     for item in releases:
         name = str(item.get("tag_name", ""))
         if item.get("draft"):
             continue
+        if prerelease and "-" not in name:
+            continue  # a stable build is never offered a pre-release
         try:
             key = version_key(name)
         except ValueError:
