@@ -14,6 +14,7 @@ from mcp_siigo_unofficial.vault.store import (
     VaultKeyMismatchError,
     VaultKeyMissingError,
 )
+from mcp_siigo_unofficial.vault.token_store import VaultTokenStore
 
 __all__ = [
     "KeyStore",
@@ -26,4 +27,5 @@ __all__ = [
     "VaultEvent",
     "VaultKeyMismatchError",
     "VaultKeyMissingError",
+    "VaultTokenStore",
 ]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import threading
 
@@ -141,7 +142,8 @@ class TrayController(QObject):
         grants = self.runtime.approvals.grants()
         if grants:
             first = grants[0]
-            minutes = int(self.runtime.approvals.seconds_left(first) // 60) + 1
+            # Round up: 600 s left is "10 min", 599 s too, 1 s is "1 min".
+            minutes = max(1, math.ceil(self.runtime.approvals.seconds_left(first) / 60))
             self.grants_action.setText(tr("tray.grants", title=first.title, minutes=minutes))
             if not self._grant_timer.isActive():
                 self._grant_timer.start()
