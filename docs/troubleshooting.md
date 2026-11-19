@@ -32,21 +32,15 @@ If the key leaked, make a new one: quit the app, delete `vault.sqlite3` (and `va
 
 That is expected while **Write actions** is OFF. Turn it on from the tray menu. Some clients need a refresh or a restart to see the new tool list. The switch turns off again every time the app starts.
 
-## A write says "The user did not approve", but nobody asked you
+## A write was refused, or no approval window appeared
 
-**Known problem in v0.1.0.** With write actions on, a write ends at once with `rejected_by_user` ("The user did not approve … Nothing was sent."), and you never see an Approve/Reject question or a `confirmation_id`. Nothing is sent to Siigo.
+Every write waits for your answer in the Siigo approval window ([Approval window](usage.md#approval-window)). Nothing is sent to Siigo unless you approve.
 
-**Cause.** Claude Code tells the server it can ask you questions (MCP elicitation), so the server asks it for your approval. Claude Code shows that question only in the **interactive terminal**. When Claude Code runs inside another app that doesn't show the question (the Claude Desktop app, or non-interactive mode such as `claude -p`), it answers "decline" automatically, without asking you. The server can't tell an automatic "decline" from your "no", so it rejects the write.
+- **"Rejected in the Siigo approval window"**: you (or Escape, or closing the window) rejected it.
+- **"Nobody answered the approval window"**: the window waited 2 minutes. Look for it behind other windows, or for the notification, and ask the AI to try again.
+- **"The MCP Siigo Unofficial app is not reachable"**: the tray app isn't running, or a stdio setup can't reach it (for example, the local port changed and the app wasn't restarted). Open the app and try again.
 
-| Where | Write approval |
-|---|---|
-| Claude Code in a terminal (`claude`) | Works: an Approve/Reject question appears |
-| Claude Desktop | Doesn't work: declined automatically |
-| Claude Code non-interactive (`claude -p`) | Doesn't work: declined automatically |
-
-**What to do for now:** run write actions from Claude Code in a terminal. Read actions work everywhere. A fix is planned (see the [write approval fix plan](../prompts/2026.11.19_write_approval_bug/2026.11.19_refined_write_approval_fix_v3.md)).
-
-Turning on system notifications doesn't help: the approval is a question in the AI app, not a notification.
+**Before v0.1.1:** the app asked the AI app to show the question (MCP elicitation). Claude Desktop answered "decline" automatically, so every write failed there with "The user did not approve". v0.1.1 shows its own window instead, which works with every AI app.
 
 ## Siigo errors
 

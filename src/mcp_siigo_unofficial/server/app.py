@@ -5,31 +5,40 @@
 - Write tools are **not listed** while the "Write actions" switch is off, and a call
   to one is rejected. Every switch change sends ``notifications/tools/list_changed``
   (and the 2026-07-28 subscription event).
-- Every write needs the user's approval: MCP elicitation when the client supports
-  it, otherwise a one-time ``confirmation_id`` issued with a preview.
+- Every write needs the user's approval in the Siigo approval window, which the tray
+  app shows (``server/approval.py``; plan section 5.1 as changed on 2026-11-19).
+  Nothing is sent to Siigo unless a person approves, or an "approve similar writes"
+  grant that the person started covers the call.
 """
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import inspect
 import json
 import logging
+import os
 import weakref
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Any
 
-from mcp.server.elicitation import AcceptedElicitation, ElicitationResult
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
-from mcp.server.mcpserver.resolve import Elicit, Resolve
 from mcp.shared.subscriptions import ToolsListChanged
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from mcp_siigo_unofficial import __version__
+from mcp_siigo_unofficial.server.approval import (
+    ApprovalRequest,
+    Approver,
+    Outcome,
+    UnavailableApprover,
+    summarize,
+)
 from mcp_siigo_unofficial.server.catalog import Catalog, EndpointTool, load_catalog
-from mcp_siigo_unofficial.server.write_gate import ConfirmationStore, WriteSwitch
+from mcp_siigo_unofficial.server.write_gate import WriteSwitch
 from mcp_siigo_unofficial.siigo import SiigoClient, SiigoError
 from mcp_siigo_unofficial.vault import Vault
 
@@ -38,6 +47,9 @@ log = logging.getLogger(__name__)
 SERVER_NAME = "mcp-siigo-unofficial"
 STATUS_TOOL = "siigo_status"
 EVENT_WRITE_EXECUTED = "write.executed"
+EVENT_WRITE_NOT_APPROVED = "write.not_approved"
+WRITE_APPROVAL_MODE = "siigo_window"
+PROGRESS_EVERY_S = 10.0
 _MAX_PREVIEW_CHARS = 2_000
 
 LIABILITY_STATEMENT = (
@@ -51,11 +63,11 @@ WRITE_WARNING = (
     "This tool creates or changes real accounting records in the user's Siigo company "
     "(electronic invoices are sent to the DIAN, Colombia's tax authority). Before you call "
     "it, explain to the user exactly what will be created or changed, and get the user's "
-    "explicit authorization. The server also asks the user to approve: either the client "
-    "shows an Approve/Reject question, or the first call returns a preview and a one-time "
-    "`confirmation_id`. In that case, show the preview to the user, and call again with the "
-    "same arguments plus `confirmation_id` only after the user approves. Never invent or "
-    "reuse a confirmation_id."
+    "explicit authorization. Then the server asks the user to approve this exact request "
+    "in the MCP Siigo Unofficial approval window on their computer (it waits up to 2 "
+    "minutes). Tell the user to look for that window. If the result says the user "
+    "rejected it, nobody answered, or the app is not reachable, nothing was sent: do not "
+    "retry without asking the user."
 )
 
 INSTRUCTIONS = f"""\
@@ -82,16 +94,6 @@ _PY_TYPES: dict[str, Any] = {
     "array": list[Any],
     "object": dict[str, Any],
 }
-
-
-class Approval(BaseModel):
-    """The user's answer to the write approval question."""
-
-    approve: bool = Field(description="Approve this write in Siigo")
-
-
-class _ElicitationUnavailable(Approval):
-    """Marker: the client cannot ask the user, so the two-step flow applies."""
 
 
 def _compact(data: Any) -> str:
@@ -159,23 +161,6 @@ def _user_parameters(endpoint: EndpointTool) -> list[inspect.Parameter]:
                 annotation=Annotated[py_type | None, Field(description=p.description or p.name)],
             )
         )
-    if not endpoint.read_only:
-        params.append(
-            inspect.Parameter(
-                "confirmation_id",
-                kw,
-                default=None,
-                annotation=Annotated[
-                    str | None,
-                    Field(
-                        description=(
-                            "One-time id from this tool's preview. Send it only after the "
-                            "user approved that exact preview."
-                        )
-                    ),
-                ],
-            )
-        )
     return params
 
 
@@ -193,7 +178,7 @@ class SiigoMCPServer(MCPServer[Any]):
         write_switch: WriteSwitch,
         *,
         catalog: Catalog | None = None,
-        confirmations: ConfirmationStore | None = None,
+        approver: Approver | None = None,
         vault: Vault | None = None,
     ) -> None:
         super().__init__(
@@ -206,7 +191,7 @@ class SiigoMCPServer(MCPServer[Any]):
         self.siigo = siigo
         self.write_switch = write_switch
         self.catalog = catalog if catalog is not None else load_catalog()
-        self.confirmations = confirmations if confirmations is not None else ConfirmationStore()
+        self.approver: Approver = approver if approver is not None else UnavailableApprover()
         self.vault = vault
         self.write_tool_names = frozenset(t.name for t in self.catalog.write_tools)
         self._connections: weakref.WeakSet[Any] = weakref.WeakSet()
@@ -303,6 +288,7 @@ class SiigoMCPServer(MCPServer[Any]):
                     "siigo_configured": server.siigo.is_configured(),
                     "siigo_base_url": server.siigo.base_url,
                     "write_actions_enabled": enabled,
+                    "write_approval": WRITE_APPROVAL_MODE,
                     "read_tools": len(server.catalog.read_tools),
                     "write_tools": len(server.catalog.write_tools) if enabled else 0,
                     "how_to_enable_writes": (
@@ -329,13 +315,10 @@ class SiigoMCPServer(MCPServer[Any]):
             _set_signature(fn, user_params, str)
         else:
             fn = self._make_write_tool(endpoint)
-            resolver = self._make_approval_resolver(endpoint, user_params)
-            approval = inspect.Parameter(
-                "approval",
-                inspect.Parameter.KEYWORD_ONLY,
-                annotation=Annotated[ElicitationResult[Approval], Resolve(resolver)],
+            ctx_param = inspect.Parameter(
+                "ctx", inspect.Parameter.KEYWORD_ONLY, annotation=Context[Any, Any]
             )
-            _set_signature(fn, [*user_params, approval], str)
+            _set_signature(fn, [*user_params, ctx_param], str)
         fn.__name__ = endpoint.name
         fn.__qualname__ = endpoint.name
         fn.__doc__ = _describe(endpoint)
@@ -360,82 +343,99 @@ class SiigoMCPServer(MCPServer[Any]):
 
         return read_tool
 
-    def _make_approval_resolver(
-        self, endpoint: EndpointTool, user_params: list[inspect.Parameter]
-    ) -> Callable[..., Elicit[Approval] | Approval]:
-        def resolver(ctx: Context[Any, Any], **kwargs: Any) -> Elicit[Approval] | Approval:
-            capabilities = ctx.client_capabilities
-            if capabilities is None or capabilities.elicitation is None:
-                return _ElicitationUnavailable(approve=False)
-            return Elicit(self._approval_message(endpoint, kwargs), Approval)
-
-        ctx_param = inspect.Parameter(
-            "ctx", inspect.Parameter.KEYWORD_ONLY, annotation=Context[Any, Any]
-        )
-        _set_signature(resolver, [ctx_param, *user_params], Elicit[Approval] | Approval)
-        resolver.__name__ = f"approve_{endpoint.name}"
-        resolver.__qualname__ = resolver.__name__
-        return resolver
-
     def _make_write_tool(self, endpoint: EndpointTool) -> Callable[..., Awaitable[str]]:
-        async def write_tool(approval: ElicitationResult[Approval], **kwargs: Any) -> str:
+        async def write_tool(ctx: Context[Any, Any], **kwargs: Any) -> str:
+            request = self._approval_request(endpoint, kwargs, ctx)
+            outcome = await self._wait_for_approval(request, ctx)
             if not self.write_switch.enabled:  # the switch may change during approval
                 raise _tool_error(
                     {"code": "write_actions_disabled", "message": "Write actions are OFF."}
                 )
-            if not isinstance(approval, AcceptedElicitation):
-                return _compact(
-                    {
-                        "status": "rejected_by_user",
-                        "message": f"The user did not approve {endpoint.name}. Nothing was sent.",
-                    }
-                )
-            if isinstance(approval.data, _ElicitationUnavailable):
-                return await self._two_step(endpoint, kwargs)
-            if not approval.data.approve:
-                return _compact(
-                    {
-                        "status": "rejected_by_user",
-                        "message": f"The user rejected {endpoint.name}. Nothing was sent.",
-                    }
-                )
-            return await self._execute(endpoint, kwargs, approved_via="elicitation")
+            if not outcome.approved:
+                return self._not_approved(endpoint, request, outcome)
+            return await self._execute(endpoint, kwargs, approved_via=outcome.value)
 
         return write_tool
 
-    async def _two_step(self, endpoint: EndpointTool, kwargs: dict[str, Any]) -> str:
-        arguments = {k: v for k, v in kwargs.items() if v is not None}
-        confirmation_id = arguments.get("confirmation_id")
-        if not confirmation_id:
-            preview = self._request_preview(endpoint, kwargs)
-            new_id = self.confirmations.issue(endpoint.name, arguments)
-            return _compact(
-                {
-                    "status": "confirmation_required",
-                    "sent_to_siigo": False,
-                    "warning": WRITE_WARNING.splitlines()[0],
-                    "preview": preview,
-                    "confirmation_id": new_id,
-                    "expires_in_seconds": int(self.confirmations.ttl),
-                    "next_step": (
-                        "Show this preview to the user. Only if the user approves, call "
-                        f"{endpoint.name} again with the same arguments plus this "
-                        "confirmation_id."
-                    ),
-                }
+    def _approval_request(
+        self, endpoint: EndpointTool, kwargs: dict[str, Any], ctx: Context[Any, Any]
+    ) -> ApprovalRequest:
+        preview = self._request_preview(endpoint, kwargs)
+        path_values = {p.name: str(kwargs.get(p.python_name) or "") for p in endpoint.path_params}
+        return ApprovalRequest(
+            tool=endpoint.name,
+            title=endpoint.title,
+            method=preview["method"],
+            url=preview["url"],
+            query=preview["query"],
+            body=preview["body"],
+            summary=summarize(path_values, preview["body"]),
+            client=_client_name(ctx),
+            connection=_connection_key(ctx),
+        )
+
+    async def _wait_for_approval(self, request: ApprovalRequest, ctx: Context[Any, Any]) -> Outcome:
+        """Ask the approver; meanwhile send progress so the AI app keeps waiting."""
+
+        async def keepalive() -> None:
+            waited = 0.0
+            while True:
+                await asyncio.sleep(PROGRESS_EVERY_S)
+                waited += PROGRESS_EVERY_S
+                with contextlib.suppress(Exception):
+                    await ctx.report_progress(
+                        waited, request.timeout_s, "Waiting for approval in the Siigo window"
+                    )
+
+        task = asyncio.create_task(keepalive())
+        try:
+            return await self.approver.approve(request)
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    def _not_approved(
+        self, endpoint: EndpointTool, request: ApprovalRequest, outcome: Outcome
+    ) -> str:
+        if self.vault is not None:
+            self.vault.add_event(
+                EVENT_WRITE_NOT_APPROVED,
+                {"tool": endpoint.name, "method": request.method, "outcome": outcome.value},
             )
-        if not self.confirmations.redeem(str(confirmation_id), endpoint.name, arguments):
+        if outcome is Outcome.UNAVAILABLE:
             raise _tool_error(
                 {
-                    "code": "invalid_confirmation",
+                    "code": "approval_unavailable",
                     "message": (
-                        "The confirmation_id is invalid, expired, already used, or the "
-                        "arguments changed. Nothing was sent. Call again without "
-                        "confirmation_id to get a new preview for the user."
+                        "The MCP Siigo Unofficial app is not reachable, so the approval "
+                        "window could not be shown. Ask the user to open the app (tray "
+                        "icon) and try again. Nothing was sent to Siigo."
                     ),
                 }
             )
-        return await self._execute(endpoint, kwargs, approved_via="confirmation_id")
+        if outcome is Outcome.TIMEOUT:
+            return _compact(
+                {
+                    "status": "approval_timeout",
+                    "sent_to_siigo": False,
+                    "message": (
+                        f"Nobody answered the approval window for {endpoint.name} in "
+                        f"{int(request.timeout_s)} seconds. Nothing was sent. Ask the user "
+                        "before trying again."
+                    ),
+                }
+            )
+        return _compact(
+            {
+                "status": "rejected_by_user",
+                "sent_to_siigo": False,
+                "message": (
+                    f"The user rejected {endpoint.name} in the Siigo approval window. "
+                    "Nothing was sent."
+                ),
+            }
+        )
 
     def _request_preview(self, endpoint: EndpointTool, kwargs: dict[str, Any]) -> dict[str, Any]:
         try:
@@ -449,16 +449,6 @@ class SiigoMCPServer(MCPServer[Any]):
             "query": endpoint.build_query(kwargs),
             "body": kwargs.get("body"),
         }
-
-    def _approval_message(self, endpoint: EndpointTool, kwargs: dict[str, Any]) -> str:
-        preview = self._request_preview(endpoint, kwargs)
-        return (
-            f"⚠ MCP Siigo Unofficial — WRITE ACTION ({endpoint.title})\n"
-            f"{preview['method']} {preview['url']}\n"
-            f"Body: {_truncate(_compact(preview['body']))}\n\n"
-            "This creates or changes REAL data in your Siigo company (invoices go to the "
-            "DIAN). You are responsible for this action. Approve it?"
-        )
 
     async def _execute(
         self, endpoint: EndpointTool, kwargs: dict[str, Any], *, approved_via: str | None = None
@@ -493,7 +483,46 @@ def build_server(
     write_switch: WriteSwitch,
     *,
     vault: Vault | None = None,
-    confirmations: ConfirmationStore | None = None,
+    approver: Approver | None = None,
 ) -> SiigoMCPServer:
     """Create the MCP server with the shipped catalog."""
-    return SiigoMCPServer(siigo, write_switch, vault=vault, confirmations=confirmations)
+    return SiigoMCPServer(siigo, write_switch, vault=vault, approver=approver)
+
+
+def _client_name(ctx: Context[Any, Any]) -> str:
+    """The AI app's name from the MCP handshake (for the window), or "AI app"."""
+    try:
+        params = ctx.session.client_params
+        info = getattr(params, "client_info", None) or getattr(params, "clientInfo", None)
+        name = getattr(info, "title", None) or getattr(info, "name", None)
+    except Exception:
+        name = None
+    return str(name)[:60] if name else "AI app"
+
+
+def _connection_key(ctx: Context[Any, Any]) -> str:
+    """Identifies one AI app connection, for "approve similar writes" grants.
+
+    - A stdio server serves one AI app session: the process id is part of every key.
+    - Streamable HTTP with a session: the MCP session id.
+    - The stateless protocol (2026-07-28) has no lasting connection: the AI app's
+      name and version stand for it.
+    - Otherwise (in-process legacy sessions): the connection object.
+    """
+    prefix = str(os.getpid())
+    try:
+        connection = getattr(ctx.session, "_connection", None)
+        session_id = getattr(connection, "session_id", None)
+        if session_id:
+            return f"{prefix}-session-{session_id}"
+        version = str(getattr(connection, "protocol_version", "") or "")
+        if version >= "2026-07-28":
+            params = ctx.session.client_params
+            info = getattr(params, "client_info", None)
+            name = getattr(info, "name", "?")
+            client_version = getattr(info, "version", "?")
+            return f"{prefix}-client-{name}-{client_version}"
+    except Exception:
+        connection = None
+    marker = id(connection) if connection is not None else 0
+    return f"{prefix}-{marker}"

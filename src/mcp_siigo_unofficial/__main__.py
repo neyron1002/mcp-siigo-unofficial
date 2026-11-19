@@ -102,7 +102,14 @@ def _open_runtime(*, follow_vault: bool) -> tuple[Vault, SiigoMCPServer]:
     siigo = SiigoClient(
         vault.load_siigo_credentials, base_url=base_url, token_store=VaultTokenStore(vault)
     )
-    return vault, build_server(siigo, switch, vault=vault)
+    # stdio: approvals are shown by the running tray app. --serve (headless): no
+    # window exists, and the switch is always off there anyway.
+    approver = None
+    if follow_vault:
+        from mcp_siigo_unofficial.server.transport import tray_approver
+
+        approver = tray_approver(vault)
+    return vault, build_server(siigo, switch, vault=vault, approver=approver)
 
 
 def _serve(port: int | None) -> int:
