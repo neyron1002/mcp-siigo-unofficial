@@ -102,6 +102,11 @@ class FakeRunner:
             configfiles.edit_toml_table(path, "mcp_servers", call[3], None)
 
 
+def norm(calls: list[list[str]]) -> list[list[str]]:
+    """Command lines with the executable path in lower case (Windows returns ``.EXE``)."""
+    return [[call[0].lower(), *call[1:]] for call in calls]
+
+
 def make_exe(folder: Path, name: str) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / (name + ".exe" if sys.platform.startswith("win") else name)
@@ -349,7 +354,9 @@ def test_connect_uses_the_apps_command_and_keeps_other_settings(home: Path, bin_
     env = make_env(home, bin_dir, runner)
     [result] = installer(env).connect(["claude-code"])
     assert (result.outcome, result.transport, result.name) == ("connected", "stdio", "siigo")
-    assert runner.calls == [[str(exe), "mcp", "add", "--scope", "user", "siigo", "--", *LAUNCHER]]
+    assert norm(runner.calls) == [
+        [str(exe).lower(), "mcp", "add", "--scope", "user", "siigo", "--", *LAUNCHER]
+    ]
     data = claude_json(home)
     assert data["theme"] == "dark"
     assert data["mcpServers"]["other"] == original["mcpServers"]["other"]
@@ -492,7 +499,7 @@ def test_codex_file_edit_and_command(home: Path, bin_dir: Path) -> None:
     exe = make_exe(bin_dir, "codex")
     env = make_env(home, bin_dir, runner)
     installer(env).connect(["codex"])
-    assert runner.calls == [[str(exe), "mcp", "add", "siigo", "--", *LAUNCHER]]
+    assert norm(runner.calls) == [[str(exe).lower(), "mcp", "add", "siigo", "--", *LAUNCHER]]
     [http] = installer(env).connect(["codex"], transport="http")
     assert http.outcome == "connected"
     assert tomllib.loads(path.read_text())["mcp_servers"]["siigo"] == {
@@ -507,7 +514,7 @@ def test_vscode_command_and_file(home: Path, bin_dir: Path) -> None:
     env = make_env(home, bin_dir, runner)
     [result] = installer(env).connect(["vscode"])
     assert result.outcome == "connected"
-    assert runner.calls[0][:2] == [str(exe), "--add-mcp"]
+    assert norm(runner.calls)[0][:2] == [str(exe).lower(), "--add-mcp"]
     path = home / ".config" / "Code" / "User" / "mcp.json"
     assert json.loads(path.read_text())["servers"]["siigo"] == {
         "type": "stdio",
