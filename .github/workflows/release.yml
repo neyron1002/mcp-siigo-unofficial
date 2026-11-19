@@ -49,6 +49,12 @@ jobs:
           mkdir -p release reports
           mv dist-release/size-report-* reports/
           mv dist-release/* release/
+          # Copies with a fixed name, so the README's "latest" links always work.
+          # The versioned files stay: the app's updater looks for those names.
+          version="${GITHUB_REF_NAME#v}"
+          cp "release/MCPSiigoUnofficial-${version}-windows-x64.exe" release/MCPSiigoUnofficial-windows-x64.exe
+          cp "release/MCPSiigoUnofficial-${version}-macos-arm64.dmg" release/MCPSiigoUnofficial-macos-arm64.dmg
+          cp "release/mcp-siigo-unofficial-${version}-linux-x64" release/mcp-siigo-unofficial-linux-x64
           uv run --no-dev python packaging/sign.py sign release
           uv run --no-dev python packaging/sign.py verify release
       - name: Create the GitHub Release
@@ -72,7 +78,9 @@ jobs:
           names=$(gh release view "${GITHUB_REF_NAME}" --json assets -q '.assets[].name')
           for file in "MCPSiigoUnofficial-${version}-windows-x64.exe" \
                       "MCPSiigoUnofficial-${version}-macos-arm64.dmg" \
-                      "mcp-siigo-unofficial-${version}-linux-x64" SHA256SUMS SHA256SUMS.sig; do
+                      "mcp-siigo-unofficial-${version}-linux-x64" \
+                      MCPSiigoUnofficial-windows-x64.exe MCPSiigoUnofficial-macos-arm64.dmg \
+                      mcp-siigo-unofficial-linux-x64 SHA256SUMS SHA256SUMS.sig; do
             grep -qxF "$file" <<<"$names" || { echo "Missing release file: $file"; exit 1; }
             echo "ok  $file"
           done
