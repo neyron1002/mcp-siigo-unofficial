@@ -280,6 +280,73 @@ _STRINGS: dict[str, dict[Language, str]] = {
         "en": "Stop approving similar writes now",
         "es": "Dejar de aprobar escrituras similares ahora",
     },
+    "settings.approval": {"en": "Write approval", "es": "Aprobación de escrituras"},
+    "settings.approval.siigo_window": {
+        "en": "Siigo window for every write (recommended)",
+        "es": "Ventana de Siigo para cada escritura (recomendado)",
+    },
+    "settings.approval.notification": {
+        "en": "Notification first (the window opens on click, or after 15 s)",
+        "es": "Primero una notificación (la ventana abre al hacer clic, o a los 15 s)",
+    },
+    "settings.approval.ai_app": {
+        "en": "In the AI app (its own question; the Siigo window if it can't ask)",
+        "es": "En la app de IA (su propia pregunta; la ventana de Siigo si no puede)",
+    },
+    "tray.auto": {
+        "en": "Approve all writes automatically",
+        "es": "Aprobar todas las escrituras automáticamente",
+    },
+    "tray.auto.hour": {"en": "For 1 hour…", "es": "Por 1 hora…"},
+    "tray.auto.today": {"en": "Until the end of today…", "es": "Hasta el final de hoy…"},
+    "tray.auto.active": {
+        "en": "AUTOMATIC APPROVAL: {minutes} min, {writes} writes left",
+        "es": "APROBACIÓN AUTOMÁTICA: quedan {minutes} min y {writes} escrituras",
+    },
+    "tray.auto.stop": {
+        "en": "Stop automatic approval now",
+        "es": "Detener la aprobación automática ahora",
+    },
+    "tray.tooltip.auto": {
+        "en": "MCP Siigo Unofficial — AUTOMATIC APPROVAL OF WRITES",
+        "es": "MCP Siigo Unofficial — APROBACIÓN AUTOMÁTICA DE ESCRITURAS",
+    },
+    "auto.title": {"en": "Automatic approval", "es": "Aprobación automática"},
+    "auto.body": {
+        "en": "<b>Dangerous.</b> Every write from every AI app runs in your Siigo company "
+        "<b>without asking you</b>, {span}, up to {max} writes. Invoices go to the DIAN. "
+        "A mistake, or hidden instructions in your data (prompt injection), can create or "
+        "change many real records. It stops at the time limit, after {max} writes, when "
+        "write actions turn off, when the app restarts, or with Stop now. Every write is "
+        "logged.<br><br>To turn it on, type <b>{text}</b>:",
+        "es": "<b>Peligroso.</b> Cada escritura de cualquier app de IA se ejecuta en su "
+        "empresa de Siigo <b>sin preguntarle</b>, {span}, hasta {max} escrituras. Las "
+        "facturas van a la DIAN. Un error, o instrucciones ocultas en sus datos (inyección "
+        "de instrucciones), pueden crear o cambiar muchos registros reales. Se detiene al "
+        "terminar el tiempo, tras {max} escrituras, al apagar las acciones de escritura, al "
+        "reiniciar la aplicación, o con Detener ahora. Cada escritura queda registrada."
+        "<br><br>Para activarla, escriba <b>{text}</b>:",
+    },
+    "auto.span.hour": {"en": "for 1 hour", "es": "durante 1 hora"},
+    "auto.span.today": {"en": "until the end of today", "es": "hasta el final de hoy"},
+    "auto.enable": {"en": "Turn on automatic approval", "es": "Activar aprobación automática"},
+    "auto.cancel": {"en": "Cancel", "es": "Cancelar"},
+    "notify.auto.on.title": {
+        "en": "Automatic approval is ON",
+        "es": "La aprobación automática está ACTIVADA",
+    },
+    "notify.auto.on.body": {
+        "en": "Writes run without asking, {span}. Stop it from the tray menu.",
+        "es": "Las escrituras se ejecutan sin preguntar, {span}. Deténgala desde el menú.",
+    },
+    "notify.auto.off.title": {
+        "en": "Automatic approval ended",
+        "es": "La aprobación automática terminó",
+    },
+    "notify.auto.off.body": {
+        "en": "Writes need your approval again.",
+        "es": "Las escrituras necesitan su aprobación de nuevo.",
+    },
     "notify.grant.title": {
         "en": "Similar writes approved for 10 minutes",
         "es": "Escrituras similares aprobadas por 10 minutos",

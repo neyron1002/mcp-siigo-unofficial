@@ -13,9 +13,11 @@ import pytest
 from mcp import Client
 from mcp.types import ElicitResult
 
+from mcp_siigo_unofficial.server import app as app_module
 from mcp_siigo_unofficial.server.app import STATUS_TOOL, SiigoMCPServer, build_server
 from mcp_siigo_unofficial.server.approval import (
     ApprovalBroker,
+    ApprovalMode,
     ApprovalRequest,
     Decision,
     LocalApprover,
@@ -56,6 +58,12 @@ class ScriptedApprover:
         self.outcome = outcome
         self.requests: list[ApprovalRequest] = []
         self.before_answer: Any = None
+        self.early: Outcome | None = None
+        self.early_checks = 0
+
+    async def preapproved(self, request: ApprovalRequest) -> Outcome | None:
+        self.early_checks += 1
+        return self.early
 
     async def approve(self, request: ApprovalRequest) -> Outcome:
         self.requests.append(request)
@@ -69,6 +77,18 @@ def approver() -> ScriptedApprover:
     return ScriptedApprover()
 
 
+class Mode:
+    value = ApprovalMode.SIIGO_WINDOW
+
+    def __call__(self) -> ApprovalMode:
+        return self.value
+
+
+@pytest.fixture
+def mode_setting() -> Mode:
+    return Mode()
+
+
 @pytest.fixture
 async def server(
     mock_siigo: MockSiigo,
@@ -76,12 +96,15 @@ async def server(
     switch: WriteSwitch,
     vault: Vault,
     approver: ScriptedApprover,
+    mode_setting: Mode,
 ) -> AsyncIterator[SiigoMCPServer]:
     siigo = SiigoClient(
         lambda: credentials, base_url="https://api.siigo.test", transport=mock_siigo.transport()
     )
     async with siigo:
-        yield build_server(siigo, switch, vault=vault, approver=approver)
+        yield build_server(
+            siigo, switch, vault=vault, approver=approver, approval_mode=mode_setting
+        )
 
 
 def text(result: Any) -> str:
@@ -153,6 +176,7 @@ async def test_annotations_and_write_warnings(server: SiigoMCPServer, switch: Wr
         assert (tool.description or "").startswith("⚠ WRITE ACTION — REAL DATA IN SIIGO")
         assert "confirmation_id" not in tool.input_schema["properties"]
         assert "ctx" not in tool.input_schema["properties"]
+        assert "approval" not in tool.input_schema["properties"]
         assert "approval window" in (tool.description or "")
         assert "body" in tool.input_schema["required"]
 
@@ -351,10 +375,165 @@ async def test_switch_turned_off_during_approval(
     assert mock_siigo.data["invoices"] == {}
 
 
-async def test_status_shows_the_approval_mode(server: SiigoMCPServer) -> None:
+async def test_status_shows_the_approval_mode(server: SiigoMCPServer, mode_setting: Mode) -> None:
     async with Client(server) as client:
         status = payload(await client.call_tool(STATUS_TOOL, {}))
+        mode_setting.value = ApprovalMode.AI_APP
+        later = payload(await client.call_tool(STATUS_TOOL, {}))
     assert status["write_approval"] == "siigo_window"
+    assert later["write_approval"] == "ai_app"
+
+
+# ---------------------------------------------------------------------- "In the AI app" mode
+def answering(action: str, approve: bool = True, delay: float = 0.0) -> Any:
+    asked: list[str] = []
+
+    async def callback(context: Any, params: Any) -> ElicitResult:
+        asked.append(params.message)
+        if delay:
+            await anyio.sleep(delay)
+        if action == "accept":
+            return ElicitResult(action="accept", content={"approve": approve})
+        return ElicitResult(action=action)  # type: ignore[arg-type]
+
+    callback.asked = asked  # type: ignore[attr-defined]
+    return callback
+
+
+@pytest.mark.parametrize("mode", MODES)
+async def test_ai_app_mode_approves_in_the_ai_app(
+    server: SiigoMCPServer,
+    switch: WriteSwitch,
+    vault: Vault,
+    approver: ScriptedApprover,
+    mode_setting: Mode,
+    mode: str,
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    mode_setting.value = ApprovalMode.AI_APP
+    callback = answering("accept", approve=True)
+    async with Client(server, mode=mode, elicitation_callback=callback) as client:
+        result = await client.call_tool("siigo_create_invoice", {"body": INVOICE})
+    assert not result.is_error
+    assert "WRITE ACTION" in callback.asked[0]
+    assert approver.requests == []  # no Siigo window
+    assert [e.detail["approved_via"] for e in vault.events("write.executed")] == ["ai_app"]
+
+
+@pytest.mark.parametrize("mode", MODES)
+async def test_ai_app_mode_rejected_in_the_ai_app(
+    server: SiigoMCPServer,
+    switch: WriteSwitch,
+    mock_siigo: MockSiigo,
+    approver: ScriptedApprover,
+    mode_setting: Mode,
+    mode: str,
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    mode_setting.value = ApprovalMode.AI_APP
+    callback = answering("accept", approve=False)
+    async with Client(server, mode=mode, elicitation_callback=callback) as client:
+        result = payload(await client.call_tool("siigo_create_invoice", {"body": INVOICE}))
+    assert result["status"] == "rejected_by_user"
+    assert "your app's approval question" in result["message"]
+    assert approver.requests == []
+    assert mock_siigo.data["invoices"] == {}
+
+
+@pytest.mark.parametrize("mode", MODES)
+@pytest.mark.parametrize("action", ["decline", "cancel"])
+async def test_ai_app_mode_fast_decline_falls_back_to_the_window(
+    server: SiigoMCPServer,
+    switch: WriteSwitch,
+    mock_siigo: MockSiigo,
+    approver: ScriptedApprover,
+    mode_setting: Mode,
+    mode: str,
+    action: str,
+) -> None:
+    """Claude Desktop declines in about 1 ms: the Siigo window asks instead (W2)."""
+    switch.enable(accepted_responsibility=True)
+    mode_setting.value = ApprovalMode.AI_APP
+    callback = answering(action)
+    async with Client(server, mode=mode, elicitation_callback=callback) as client:
+        approver.outcome = Outcome.APPROVED
+        approved = await client.call_tool("siigo_create_invoice", {"body": INVOICE})
+        approver.outcome = Outcome.REJECTED
+        rejected = payload(await client.call_tool("siigo_create_invoice", {"body": INVOICE}))
+    assert not approved.is_error
+    assert rejected["status"] == "rejected_by_user"
+    assert len(callback.asked) == 2
+    assert len(approver.requests) == 2  # both went to the window
+    assert len(mock_siigo.data["invoices"]) == 1
+
+
+async def test_ai_app_mode_slow_decline_is_the_users_no(
+    server: SiigoMCPServer,
+    switch: WriteSwitch,
+    mock_siigo: MockSiigo,
+    approver: ScriptedApprover,
+    mode_setting: Mode,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    mode_setting.value = ApprovalMode.AI_APP
+    monkeypatch.setattr(app_module, "AUTOMATIC_DECLINE_S", 0.05)
+    callback = answering("decline", delay=0.1)
+    async with Client(server, mode="legacy", elicitation_callback=callback) as client:
+        result = payload(await client.call_tool("siigo_create_invoice", {"body": INVOICE}))
+    assert result["status"] == "rejected_by_user"
+    assert approver.requests == []
+    assert mock_siigo.data["invoices"] == {}
+
+
+async def test_ai_app_mode_without_elicitation_uses_the_window(
+    server: SiigoMCPServer, switch: WriteSwitch, approver: ScriptedApprover, mode_setting: Mode
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    mode_setting.value = ApprovalMode.AI_APP
+    async with Client(server) as client:  # no elicitation callback: no capability
+        result = await client.call_tool("siigo_create_invoice", {"body": INVOICE})
+    assert not result.is_error
+    assert len(approver.requests) == 1
+
+
+@pytest.mark.parametrize("early", [Outcome.AUTOMATIC, Outcome.GRANTED])
+async def test_ai_app_mode_skips_the_question_when_preapproved(
+    server: SiigoMCPServer,
+    switch: WriteSwitch,
+    vault: Vault,
+    approver: ScriptedApprover,
+    mode_setting: Mode,
+    early: Outcome,
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    mode_setting.value = ApprovalMode.AI_APP
+    approver.early = early
+    callback = answering("accept", approve=False)
+    async with Client(server, elicitation_callback=callback) as client:
+        result = await client.call_tool("siigo_create_invoice", {"body": INVOICE})
+    assert not result.is_error
+    assert callback.asked == []
+    assert approver.requests == []
+    assert [e.detail["approved_via"] for e in vault.events("write.executed")] == [early.value]
+
+
+@pytest.mark.parametrize("mode_value", [ApprovalMode.SIIGO_WINDOW, ApprovalMode.NOTIFICATION])
+async def test_window_modes_never_ask_the_ai_app(
+    server: SiigoMCPServer,
+    switch: WriteSwitch,
+    approver: ScriptedApprover,
+    mode_setting: Mode,
+    mode_value: ApprovalMode,
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    mode_setting.value = mode_value
+    callback = answering("accept", approve=True)
+    async with Client(server, elicitation_callback=callback) as client:
+        await client.call_tool("siigo_create_invoice", {"body": INVOICE})
+    assert callback.asked == []
+    assert len(approver.requests) == 1
+    assert approver.early_checks == 0
 
 
 def test_no_schema_repeats_a_required_name() -> None:

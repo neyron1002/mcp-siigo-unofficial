@@ -21,7 +21,10 @@ from mcp_siigo_unofficial.paths import vault_path
 from mcp_siigo_unofficial.server.app import SiigoMCPServer, build_server
 from mcp_siigo_unofficial.server.approval import (
     APPROVE_PATH,
+    PREAPPROVED_PATH,
+    SETTING_APPROVAL_MODE,
     ApprovalBroker,
+    ApprovalMode,
     ApprovalRequest,
     LocalApprover,
     Outcome,
@@ -58,9 +61,14 @@ class AppRuntime:
         self.write_switch.reset_at_start()  # plan P9: off at every start
         self.siigo = SiigoClient(vault.load_siigo_credentials, base_url=siigo_base_url())
         self.approvals = ApprovalBroker()
+        self.approvals.on_event = vault.add_event
         self.write_switch.add_listener(self._on_write_switch)
         self.server: SiigoMCPServer = build_server(
-            self.siigo, self.write_switch, vault=vault, approver=LocalApprover(self.approvals)
+            self.siigo,
+            self.write_switch,
+            vault=vault,
+            approver=LocalApprover(self.approvals),
+            approval_mode=self.approval_mode,
         )
         self.bearer_key = ensure_bearer_key(vault)
         self.port = int(vault.get_setting(SETTING_PORT, DEFAULT_PORT))
@@ -103,9 +111,32 @@ class AppRuntime:
             outcome = await runtime.approvals.request(approval)
             return JSONResponse({"outcome": outcome.value})
 
+        @self.server.custom_route(PREAPPROVED_PATH, methods=["POST"])  # type: ignore[untyped-decorator]
+        async def preapproved(request: Request) -> Response:
+            try:
+                approval = ApprovalRequest.from_json(await request.json())
+            except (ValueError, KeyError, TypeError):
+                return JSONResponse({"error": "bad_request"}, status_code=400)
+            if not runtime.write_switch.enabled:
+                return JSONResponse({"outcome": None})
+            early = runtime.approvals.preapproved(approval)
+            return JSONResponse({"outcome": None if early is None else early.value})
+
     def _on_write_switch(self, enabled: bool) -> None:
-        if not enabled:
-            self.approvals.stop_grants()  # grants end when write actions turn off
+        if not enabled:  # grants and automatic approval end when write actions turn off
+            self.approvals.stop_grants()
+            self.approvals.stop_automatic("write_actions_off")
+
+    # ------------------------------------------------------------------ approval mode
+    def approval_mode(self) -> ApprovalMode:
+        return ApprovalMode.parse(self.vault.get_setting(SETTING_APPROVAL_MODE))
+
+    def set_approval_mode(self, mode: ApprovalMode) -> None:
+        """Only the Settings dialog calls this (W8: never an MCP tool)."""
+        if mode is self.approval_mode():
+            return
+        self.vault.set_setting(SETTING_APPROVAL_MODE, mode.value)
+        self.vault.add_event("write_approval.mode_changed", {"mode": mode.value})
 
     @property
     def url(self) -> str:
@@ -186,6 +217,7 @@ class AppRuntime:
     def shutdown(self) -> None:
         """Turn writes off (P9), stop the server, and close the vault."""
         try:
+            self.approvals.stop_automatic("app_quit")
             self.write_switch.reset_at_start()
         finally:
             if self.http is not None:

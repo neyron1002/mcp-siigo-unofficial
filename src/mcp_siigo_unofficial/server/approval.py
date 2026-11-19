@@ -1,7 +1,11 @@
 """Write approval (plan section 5.1, decisions W1-W10 of 2026-11-19).
 
-Every write waits for a person's answer in the **Siigo approval window**, which the
-tray app shows. The pieces here have no Qt:
+Every write needs a person's approval, in the mode the user chose in Settings
+(:class:`ApprovalMode`): the **Siigo approval window** (default), a notification that
+opens it, or the AI app's own question (MCP elicitation) with the window as fallback.
+The user can also start, in the app only, "approve similar writes for 10 minutes" or
+automatic approval for 1 hour / until the end of today (max 100 writes). The pieces
+here have no Qt:
 
 - :class:`ApprovalRequest` describes one write: the tool, the request, a short
   summary for the window, and the AI app connection that asked.
@@ -19,6 +23,7 @@ If nobody can show the window (no tray app, no UI), the answer is
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import enum
 import logging
 import secrets
@@ -34,7 +39,42 @@ log = logging.getLogger(__name__)
 
 APPROVAL_TIMEOUT_S = 120.0  # W6: the window waits 2 minutes
 SIMILAR_GRANT_S = 600.0  # W4: approve similar writes for 10 minutes
+AUTOMATIC_MAX_WRITES = 100  # W5
+AUTOMATIC_CONFIRM_TEXT = "APPROVE ALL"  # W5: typed to turn automatic approval on
 APPROVE_PATH = "/app/approve"
+PREAPPROVED_PATH = "/app/preapproved"
+SETTING_APPROVAL_MODE = "write_approval.mode"
+
+
+class ApprovalMode(enum.StrEnum):
+    """How each write is approved (Settings → Write approval; only the user changes it)."""
+
+    SIIGO_WINDOW = "siigo_window"
+    NOTIFICATION = "notification"
+    AI_APP = "ai_app"
+
+    @classmethod
+    def parse(cls, value: object) -> ApprovalMode:
+        try:
+            return cls(str(value))
+        except ValueError:
+            return cls.SIIGO_WINDOW
+
+
+class AutomaticSpan(enum.StrEnum):
+    HOUR = "hour"
+    TODAY = "today"
+
+
+def automatic_seconds(span: AutomaticSpan, now: dt.datetime | None = None) -> float:
+    """Length of an automatic approval: 1 hour, or until local midnight."""
+    if span is AutomaticSpan.HOUR:
+        return 3600.0
+    current = now or dt.datetime.now().astimezone()
+    midnight = (current + dt.timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(60.0, (midnight - current).total_seconds())
+
+
 _REMOTE_MARGIN_S = 15.0
 
 
@@ -43,12 +83,21 @@ class Outcome(enum.StrEnum):
     APPROVED_SIMILAR = "approved_similar"  # approved, and a 10-minute grant was started
     GRANTED = "granted"  # covered by an earlier "approve similar writes" grant
     REJECTED = "rejected"
+    AUTOMATIC = "automatic"  # automatic approval for a limited time (W5)
+    AI_APP = "ai_app"  # approved in the AI app's own question (elicitation)
+    REJECTED_IN_APP = "rejected_in_app"
     TIMEOUT = "timeout"
     UNAVAILABLE = "unavailable"
 
     @property
     def approved(self) -> bool:
-        return self in (Outcome.APPROVED, Outcome.APPROVED_SIMILAR, Outcome.GRANTED)
+        return self in (
+            Outcome.APPROVED,
+            Outcome.APPROVED_SIMILAR,
+            Outcome.GRANTED,
+            Outcome.AUTOMATIC,
+            Outcome.AI_APP,
+        )
 
 
 class Decision(enum.StrEnum):
@@ -101,6 +150,10 @@ class ApprovalRequest:
 class Approver(Protocol):
     async def approve(self, request: ApprovalRequest) -> Outcome: ...
 
+    async def preapproved(self, request: ApprovalRequest) -> Outcome | None:
+        """GRANTED or AUTOMATIC if no question is needed (consumes it), else None."""
+        ...
+
 
 #: The tray sets this: show the window for ``request`` and call ``answer`` with the
 #: decision (from any thread). ``closed`` is called if the window must close (timeout).
@@ -116,6 +169,19 @@ class Grant:
     expires_at: float
 
 
+@dataclass
+class Automatic:
+    """Automatic approval of every write until ``expires_at`` or ``writes_left`` is 0."""
+
+    span: AutomaticSpan
+    expires_at: float
+    writes_left: int
+    writes_used: int = 0
+
+
+EventSink = Callable[[str, dict[str, Any]], object]
+
+
 class ApprovalBroker:
     """Shows approval requests in the tray app and collects the answers. Thread-safe."""
 
@@ -124,9 +190,76 @@ class ApprovalBroker:
         self._lock = threading.Lock()
         self._pending: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Future[Decision]]] = {}
         self._grants: dict[tuple[str, str], Grant] = {}
+        self._automatic: Automatic | None = None
         self.on_ask: AskCallback | None = None
         self.on_close: CloseCallback | None = None
         self.on_grants_changed: Callable[[], None] | None = None
+        self.on_event: EventSink | None = None
+
+    # ------------------------------------------------------------------ automatic
+    def automatic(self) -> Automatic | None:
+        """The active automatic approval, or None (an expired one ends here)."""
+        with self._lock:
+            auto = self._automatic
+            if auto is None or auto.expires_at > self._clock():
+                return auto
+            self._automatic = None
+        self._ended(auto, "time_limit")
+        return None
+
+    def start_automatic(self, span: AutomaticSpan, *, confirm_text: str) -> Automatic:
+        """Turn on automatic approval. Only the app's own dialog calls this (W5, W8)."""
+        if confirm_text != AUTOMATIC_CONFIRM_TEXT:
+            raise ValueError(f"Type {AUTOMATIC_CONFIRM_TEXT} to confirm.")
+        seconds = automatic_seconds(span)
+        auto = Automatic(span, self._clock() + seconds, AUTOMATIC_MAX_WRITES)
+        with self._lock:
+            self._automatic = auto
+        self._event(
+            "write_approval.automatic_on",
+            {"span": span.value, "seconds": int(seconds), "max_writes": AUTOMATIC_MAX_WRITES},
+        )
+        self._grants_changed()
+        return auto
+
+    def stop_automatic(self, reason: str = "stopped") -> None:
+        with self._lock:
+            auto, self._automatic = self._automatic, None
+        if auto is not None:
+            self._ended(auto, reason)
+
+    def _ended(self, auto: Automatic, reason: str) -> None:
+        self._event(
+            "write_approval.automatic_off", {"reason": reason, "writes_used": auto.writes_used}
+        )
+        self._grants_changed()
+
+    def _event(self, kind: str, detail: dict[str, Any]) -> None:
+        sink = self.on_event
+        if sink is not None:
+            try:
+                sink(kind, detail)
+            except Exception:
+                log.exception("Approval event could not be recorded")
+
+    def preapproved(self, request: ApprovalRequest) -> Outcome | None:
+        """AUTOMATIC (uses one of the writes left) or GRANTED, else None."""
+        if self.automatic() is not None:
+            ended: Automatic | None = None
+            with self._lock:
+                auto = self._automatic
+                if auto is not None:
+                    auto.writes_left -= 1
+                    auto.writes_used += 1
+                    if auto.writes_left <= 0:
+                        ended, self._automatic = auto, None
+            if auto is not None:
+                if ended is not None:
+                    self._ended(ended, "write_limit")
+                return Outcome.AUTOMATIC
+        if self._granted(request):
+            return Outcome.GRANTED
+        return None
 
     # ------------------------------------------------------------------ grants
     def grants(self) -> list[Grant]:
@@ -139,6 +272,9 @@ class ApprovalBroker:
 
     def seconds_left(self, grant: Grant) -> float:
         return max(0.0, grant.expires_at - self._clock())
+
+    def seconds_left_until(self, expires_at: float) -> float:
+        return max(0.0, expires_at - self._clock())
 
     def _granted(self, request: ApprovalRequest) -> bool:
         return any(
@@ -171,8 +307,9 @@ class ApprovalBroker:
     # ------------------------------------------------------------------ requests
     async def request(self, request: ApprovalRequest) -> Outcome:
         """Ask the person. Returns when they answer, the time runs out, or no UI exists."""
-        if self._granted(request):
-            return Outcome.GRANTED
+        early = self.preapproved(request)
+        if early is not None:
+            return early
         ask = self.on_ask
         if ask is None:
             return Outcome.UNAVAILABLE
@@ -242,6 +379,9 @@ class LocalApprover:
     async def approve(self, request: ApprovalRequest) -> Outcome:
         return await self.broker.request(request)
 
+    async def preapproved(self, request: ApprovalRequest) -> Outcome | None:
+        return self.broker.preapproved(request)
+
 
 class UnavailableApprover:
     """No window can be shown (headless ``--serve``, tests): every write is refused."""
@@ -249,6 +389,10 @@ class UnavailableApprover:
     async def approve(self, request: ApprovalRequest) -> Outcome:
         del request
         return Outcome.UNAVAILABLE
+
+    async def preapproved(self, request: ApprovalRequest) -> Outcome | None:
+        del request
+        return None
 
 
 class RemoteApprover:
@@ -258,27 +402,42 @@ class RemoteApprover:
         self._base_url = base_url
         self._bearer_key = bearer_key
 
-    async def approve(self, request: ApprovalRequest) -> Outcome:
+    async def _post(self, path: str, request: ApprovalRequest, timeout: float) -> Any:
         base, key = self._base_url(), self._bearer_key()
         if not base or not key:
-            return Outcome.UNAVAILABLE
+            return None
         try:
-            async with httpx2.AsyncClient(timeout=request.timeout_s + _REMOTE_MARGIN_S) as client:
+            async with httpx2.AsyncClient(timeout=timeout) as client:
                 response = await client.post(
-                    f"{base}{APPROVE_PATH}",
+                    f"{base}{path}",
                     json=request.to_json(),
                     headers={"Authorization": f"Bearer {key}"},
                 )
         except httpx2.HTTPError as exc:
             log.warning("The Siigo app is not reachable for approval: %s", type(exc).__name__)
-            return Outcome.UNAVAILABLE
+            return None
         if response.status_code != 200:
             log.warning("Approval route answered HTTP %s", response.status_code)
-            return Outcome.UNAVAILABLE
+            return None
         try:
-            return Outcome(response.json()["outcome"])
+            return response.json()
+        except ValueError:
+            return None
+
+    async def approve(self, request: ApprovalRequest) -> Outcome:
+        data = await self._post(APPROVE_PATH, request, request.timeout_s + _REMOTE_MARGIN_S)
+        try:
+            return Outcome(data["outcome"])
         except (ValueError, KeyError, TypeError):
             return Outcome.UNAVAILABLE
+
+    async def preapproved(self, request: ApprovalRequest) -> Outcome | None:
+        data = await self._post(PREAPPROVED_PATH, request, _REMOTE_MARGIN_S)
+        try:
+            value = data["outcome"]
+            return None if value is None else Outcome(value)
+        except (ValueError, KeyError, TypeError):
+            return None
 
 
 def summarize(path_values: dict[str, str], body: Any, limit: int = 6) -> list[tuple[str, str]]:

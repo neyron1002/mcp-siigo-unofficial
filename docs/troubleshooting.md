@@ -39,6 +39,8 @@ Every write waits for your answer in the Siigo approval window ([Approval window
 - **"Rejected in the Siigo approval window"**: you (or Escape, or closing the window) rejected it.
 - **"Nobody answered the approval window"**: the window waited 2 minutes. Look for it behind other windows, or for the notification, and ask the AI to try again.
 - **"The MCP Siigo Unofficial app is not reachable"**: the tray app isn't running, or a stdio setup can't reach it (for example, the local port changed and the app wasn't restarted). Open the app and try again.
+- **"The user rejected … in your app's approval question"**: in the **In the AI app** mode, you (or the AI app, after more than 1 second) said no in the AI app's question.
+- **No window, only a notification**: the mode is **Notification first**. Click the notification, or wait 15 seconds.
 
 **Before v0.1.1:** the app asked the AI app to show the question (MCP elicitation). Claude Desktop answered "decline" automatically, so every write failed there with "The user did not approve". v0.1.1 shows its own window instead, which works with every AI app.
 
