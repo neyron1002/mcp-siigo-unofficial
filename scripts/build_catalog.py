@@ -124,6 +124,23 @@ def _title(name: str) -> str:
     return name.replace("_", " ").capitalize().replace("Dian", "DIAN").replace("Pdf", "PDF")
 
 
+def dedupe_required(node: Any) -> Any:
+    """Remove repeated names from every JSON Schema ``required`` list (keeps the order).
+
+    The Claude API rejects schemas whose ``required`` has duplicate items, and Claude
+    Code then hides the whole tool.
+    """
+    if isinstance(node, dict):
+        out = {k: dedupe_required(v) for k, v in node.items()}
+        required = out.get("required")
+        if isinstance(required, list):
+            out["required"] = list(dict.fromkeys(required))
+        return out
+    if isinstance(node, list):
+        return [dedupe_required(v) for v in node]
+    return node
+
+
 def convert(source: dict[str, Any]) -> dict[str, Any]:
     endpoints = source["endpoints"]
     names = {e["nombre"] for e in endpoints}
@@ -160,7 +177,7 @@ def convert(source: dict[str, Any]) -> dict[str, Any]:
                 for p in e.get("parametros", [])
             ],
             "fixed_query": e.get("query_fija") or {},
-            "body_schema": e.get("cuerpo"),
+            "body_schema": dedupe_required(e.get("cuerpo")),
         }
         if not read_only:
             tool["request_example"] = e.get("ejemplo_peticion")

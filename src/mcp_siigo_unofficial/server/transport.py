@@ -22,6 +22,7 @@ import uvicorn
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from mcp_siigo_unofficial.server.app import SiigoMCPServer
+from mcp_siigo_unofficial.server.approval import RemoteApprover
 from mcp_siigo_unofficial.vault import Vault
 
 log = logging.getLogger(__name__)
@@ -41,6 +42,20 @@ def ensure_bearer_key(vault: Vault) -> str:
         key = secrets.token_urlsafe(32)
         vault.set_secret(SECRET_BEARER_KEY, key)
     return key
+
+
+def tray_approver(vault: Vault) -> RemoteApprover:
+    """Approver for a ``--stdio`` server: the tray app's window, over 127.0.0.1.
+
+    Port and key are read at each write, so a port change in Settings is followed.
+    The key is never created here: without it the tray app never ran, so the answer
+    is "unavailable".
+    """
+
+    def base_url() -> str | None:
+        return f"http://{HOST}:{int(vault.get_setting(SETTING_PORT, DEFAULT_PORT))}"
+
+    return RemoteApprover(base_url, lambda: vault.get_secret(SECRET_BEARER_KEY))
 
 
 class BearerAuthMiddleware:

@@ -19,6 +19,13 @@ from starlette.responses import JSONResponse, Response
 from mcp_siigo_unofficial.app.client_setup import ClientSetup, build_setups
 from mcp_siigo_unofficial.paths import vault_path
 from mcp_siigo_unofficial.server.app import SiigoMCPServer, build_server
+from mcp_siigo_unofficial.server.approval import (
+    APPROVE_PATH,
+    ApprovalBroker,
+    ApprovalRequest,
+    LocalApprover,
+    Outcome,
+)
 from mcp_siigo_unofficial.server.transport import (
     DEFAULT_PORT,
     HOST,
@@ -50,13 +57,18 @@ class AppRuntime:
         self.write_switch = WriteSwitch(vault)
         self.write_switch.reset_at_start()  # plan P9: off at every start
         self.siigo = SiigoClient(vault.load_siigo_credentials, base_url=siigo_base_url())
-        self.server: SiigoMCPServer = build_server(self.siigo, self.write_switch, vault=vault)
+        self.approvals = ApprovalBroker()
+        self.write_switch.add_listener(self._on_write_switch)
+        self.server: SiigoMCPServer = build_server(
+            self.siigo, self.write_switch, vault=vault, approver=LocalApprover(self.approvals)
+        )
         self.bearer_key = ensure_bearer_key(vault)
         self.port = int(vault.get_setting(SETTING_PORT, DEFAULT_PORT))
         self.http: HttpServerThread | None = None
         self.server_error: str | None = None
         self.on_show_requested: Callable[[], None] | None = None
         self._register_show_route()
+        self._register_approve_route()
 
     @classmethod
     def open(cls, path: Path | None = None, keystore: KeyStore | None = None) -> AppRuntime:
@@ -72,6 +84,28 @@ class AppRuntime:
             if callback is not None:
                 callback()
             return JSONResponse({"shown": callback is not None})
+
+    def _register_approve_route(self) -> None:
+        """Private route for ``--stdio`` servers: show the approval window here.
+
+        Protected by the bearer key like ``/mcp``. The answer is the outcome only.
+        """
+        runtime = self
+
+        @self.server.custom_route(APPROVE_PATH, methods=["POST"])  # type: ignore[untyped-decorator]
+        async def approve(request: Request) -> Response:
+            try:
+                approval = ApprovalRequest.from_json(await request.json())
+            except (ValueError, KeyError, TypeError):
+                return JSONResponse({"error": "bad_request"}, status_code=400)
+            if not runtime.write_switch.enabled:
+                return JSONResponse({"outcome": Outcome.UNAVAILABLE.value})
+            outcome = await runtime.approvals.request(approval)
+            return JSONResponse({"outcome": outcome.value})
+
+    def _on_write_switch(self, enabled: bool) -> None:
+        if not enabled:
+            self.approvals.stop_grants()  # grants end when write actions turn off
 
     @property
     def url(self) -> str:
