@@ -36,11 +36,13 @@ def check_qt(workdir: Path) -> dict[str, Any]:
     _headless_if_needed()
     from PySide6.QtWidgets import QApplication, QSystemTrayIcon
 
+    from mcp_siigo_unofficial.app.connect_window import ConnectWindow
     from mcp_siigo_unofficial.app.dialogs import AboutDialog, SettingsDialog, WriteActionsDialog
     from mcp_siigo_unofficial.app.icons import app_icon
     from mcp_siigo_unofficial.app.runtime import AppRuntime
     from mcp_siigo_unofficial.app.tray import TrayController
     from mcp_siigo_unofficial.autostart import LinuxAutostart
+    from mcp_siigo_unofficial.clients import Environment
     from mcp_siigo_unofficial.i18n import Translator
     from mcp_siigo_unofficial.vault import MemoryKeyStore
 
@@ -48,11 +50,23 @@ def check_qt(workdir: Path) -> dict[str, Any]:
     app = existing if isinstance(existing, QApplication) else QApplication([sys.argv[0]])
     icons_ok = not app_icon().isNull() and not app_icon(write_mode=True).isNull()
     runtime = AppRuntime.open(workdir / "qt-vault.sqlite3", MemoryKeyStore())
+    # The Connect window looks at an empty, throwaway home folder: never the user's apps.
+    clients_home = workdir / "clients-home"
+    clients_home.mkdir(exist_ok=True)
+    installer = runtime.client_installer(Environment(home=clients_home, env={}, search_path=[]))
+    connect_rows = 0
     try:
         for language in ("en", "es"):
             tr = Translator(language)
-            tray = TrayController(runtime, tr, LinuxAutostart(workdir / "autostart"), app)
+            tray = TrayController(
+                runtime, tr, LinuxAutostart(workdir / "autostart"), app, installer=installer
+            )
             tray.refresh()
+            tray._fill_clients_menu()
+            window = ConnectWindow(installer, tr)
+            window.adjustSize()
+            connect_rows = len(window.rows)
+            window.deleteLater()
             for dialog in (WriteActionsDialog(tr), SettingsDialog(runtime, tr), AboutDialog(tr)):
                 dialog.adjustSize()
                 dialog.deleteLater()
@@ -63,6 +77,7 @@ def check_qt(workdir: Path) -> dict[str, Any]:
         "platform": app.platformName(),
         "icons": icons_ok,
         "tray_available": QSystemTrayIcon.isSystemTrayAvailable(),
+        "connect_window_apps": connect_rows,
     }
 
 

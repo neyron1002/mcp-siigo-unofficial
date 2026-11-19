@@ -357,6 +357,138 @@ _STRINGS: dict[str, dict[Language, str]] = {
         "es": "{title} desde la misma app de IA se ejecuta sin preguntar hasta que termine "
         "el tiempo. Use el menú del icono para detenerlo ahora.",
     },
+    # Connect AI apps (one-click plan v3, phase 8)
+    "connect.title": {"en": "Connect your AI apps", "es": "Conectar sus apps de IA"},
+    "connect.intro": {
+        "en": "Add the Siigo tools to these AI apps, for every project and new session of "
+        "this computer user. Your Siigo password and keys are never written into them.",
+        "es": "Agregue las herramientas de Siigo a estas apps de IA, para todos los proyectos "
+        "y sesiones nuevas de este usuario del equipo. Su contraseña y sus claves de Siigo "
+        "nunca se escriben en ellas.",
+    },
+    "connect.advanced": {
+        "en": "Advanced: connection type for each app",
+        "es": "Avanzado: tipo de conexión para cada app",
+    },
+    "connect.advanced.note": {
+        "en": "stdio (recommended): the AI app starts the Siigo server itself, and no key is "
+        "written in its settings. HTTP: the AI app connects to this app's local server with "
+        "your private key, and this app must be running. Claude Desktop uses stdio only.",
+        "es": "stdio (recomendado): la app de IA inicia el servidor de Siigo por sí misma, y "
+        "no se escribe ninguna clave en su configuración. HTTP: la app de IA se conecta al "
+        "servidor local de esta app con su clave privada, y esta app debe estar abierta. "
+        "Claude Desktop solo usa stdio.",
+    },
+    "connect.transport.stdio": {"en": "stdio (recommended)", "es": "stdio (recomendado)"},
+    "connect.transport.http": {"en": "HTTP", "es": "HTTP"},
+    "connect.state.connected": {"en": "Connected · {transport}", "es": "Conectada · {transport}"},
+    "connect.state.not_installed": {"en": "Not installed", "es": "No instalada"},
+    "connect.state.not_connected": {"en": "Found", "es": "Encontrada"},
+    "connect.state.needs_repair": {
+        "en": "Connected, needs an update",
+        "es": "Conectada, necesita actualización",
+    },
+    "connect.state.conflict": {
+        "en": 'Another program uses "siigo"',
+        "es": 'Otro programa usa "siigo"',
+    },
+    "connect.state.unreadable": {
+        "en": "Settings file can't be read",
+        "es": "No se puede leer su configuración",
+    },
+    "connect.switch_stdio": {"en": "Switch to stdio", "es": "Cambiar a stdio"},
+    "connect.disconnect": {"en": "Disconnect", "es": "Desconectar"},
+    "connect.disconnect_all": {"en": "Disconnect all", "es": "Desconectar todas"},
+    "connect.not_now": {"en": "Not now", "es": "Ahora no"},
+    "connect.close": {"en": "Close", "es": "Cerrar"},
+    "connect.connect": {"en": "Connect", "es": "Conectar"},
+    "connect.working": {"en": "Working…", "es": "Trabajando…"},
+    "connect.nothing": {"en": "Nothing changed.", "es": "No cambió nada."},
+    "connect.result.connected": {
+        "en": '{app}: connected as "{name}".',
+        "es": '{app}: conectada como "{name}".',
+    },
+    "connect.result.already_connected": {
+        "en": "{app}: already connected.",
+        "es": "{app}: ya estaba conectada.",
+    },
+    "connect.result.repaired": {
+        "en": "{app}: setup updated.",
+        "es": "{app}: configuración actualizada.",
+    },
+    "connect.result.disconnected": {"en": "{app}: disconnected.", "es": "{app}: desconectada."},
+    "connect.result.conflict": {
+        "en": '{app}: skipped, another program uses "{name}".',
+        "es": '{app}: omitida, otro programa usa "{name}".',
+    },
+    "connect.result.failed": {
+        "en": "{app}: could not be changed.",
+        "es": "{app}: no se pudo cambiar.",
+    },
+    "connect.new_session_hint": {
+        "en": "Open a new session in Claude Code, Codex, Gemini, or VS Code to see the "
+        "Siigo tools.",
+        "es": "Abra una sesión nueva en Claude Code, Codex, Gemini o VS Code para ver las "
+        "herramientas de Siigo.",
+    },
+    "connect.restart_hint": {
+        "en": "Restart Claude Desktop to see the change.",
+        "es": "Reinicie Claude Desktop para ver el cambio.",
+    },
+    "connect.restart_desktop": {"en": "Restart Claude Desktop", "es": "Reiniciar Claude Desktop"},
+    "connect.restarting": {"en": "Restarting Claude Desktop…", "es": "Reiniciando Claude Desktop…"},
+    "connect.restarted": {
+        "en": "Claude Desktop was restarted.",
+        "es": "Claude Desktop se reinició.",
+    },
+    "connect.restart_failed": {
+        "en": "Claude Desktop could not be restarted. Quit it and open it again.",
+        "es": "No se pudo reiniciar Claude Desktop. Ciérrelo y ábralo de nuevo.",
+    },
+    "connect.conflict": {
+        "en": '{app} already has a server called "siigo" from another program. Replace it, '
+        'or keep both (this app is added as "siigo-unofficial")?',
+        "es": '{app} ya tiene un servidor llamado "siigo" de otro programa. ¿Reemplazarlo, '
+        'o conservar ambos (esta app se agrega como "siigo-unofficial")?',
+    },
+    "connect.conflict.replace": {"en": "Replace", "es": "Reemplazar"},
+    "connect.conflict.keep_both": {"en": "Keep both", "es": "Conservar ambos"},
+    "connect.conflict.skip": {"en": "Skip", "es": "Omitir"},
+    "tray.clients": {"en": "AI apps", "es": "Apps de IA"},
+    "tray.clients.connect": {"en": "Connect AI apps…", "es": "Conectar apps de IA…"},
+    "tray.clients.disconnect_all": {
+        "en": "Disconnect all AI apps",
+        "es": "Desconectar todas las apps de IA",
+    },
+    "tray.clients.none": {"en": "No AI apps found", "es": "No se encontraron apps de IA"},
+    "tray.clients.line": {"en": "{app}: {state}", "es": "{app}: {state}"},
+    "tray.clients.confirm_disconnect": {
+        "en": "Remove the Siigo tools from every AI app? Other servers in their settings are "
+        "not changed.",
+        "es": "¿Quitar las herramientas de Siigo de todas las apps de IA? Los demás servidores "
+        "de su configuración no cambian.",
+    },
+    "notify.clients.found.title": {"en": "AI app found", "es": "App de IA encontrada"},
+    "notify.clients.found.body": {
+        "en": "{apps} found. Click to connect it to Siigo.",
+        "es": "Se encontró {apps}. Haga clic para conectarla a Siigo.",
+    },
+    "notify.clients.repaired.title": {
+        "en": "AI app setup updated",
+        "es": "Configuración de apps de IA actualizada",
+    },
+    "notify.clients.repaired.body": {
+        "en": "The Siigo setup now points to this app's new location in: {apps}.",
+        "es": "La configuración de Siigo ahora apunta a la nueva ubicación de esta app en: {apps}.",
+    },
+    "notify.clients.disconnected.title": {
+        "en": "AI apps disconnected",
+        "es": "Apps de IA desconectadas",
+    },
+    "notify.clients.disconnected.body": {
+        "en": "The Siigo tools were removed from: {apps}.",
+        "es": "Se quitaron las herramientas de Siigo de: {apps}.",
+    },
 }
 
 

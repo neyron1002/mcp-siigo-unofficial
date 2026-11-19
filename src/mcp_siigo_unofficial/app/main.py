@@ -121,6 +121,9 @@ def run_app(argv: Sequence[str] | None = None) -> int:
     from mcp_siigo_unofficial.update.apply import take_update_result
 
     tray.show_update_result(take_update_result())
+    # One-click plan v3: the Connect window once (Q12), then repair (Q14) and new apps (Q4).
+    tray.offer_connect_once()
+    tray.start_client_checks()
     if os.environ.get(NO_UPDATE_CHECK_ENV) != "1":
         QTimer.singleShot(UPDATE_CHECK_DELAY_MS, lambda: tray.check_for_updates(interactive=False))
 
