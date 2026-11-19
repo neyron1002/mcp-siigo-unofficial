@@ -16,7 +16,9 @@ import httpx2
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from mcp_siigo_unofficial.app.client_setup import ClientSetup, build_setups
+from mcp_siigo_unofficial.app.client_setup import ClientSetup, build_setups, stdio_command
+from mcp_siigo_unofficial.clients import Environment, Installer, ServerSpec
+from mcp_siigo_unofficial.clients.specs import Transport
 from mcp_siigo_unofficial.paths import vault_path
 from mcp_siigo_unofficial.server.app import SiigoMCPServer, build_server
 from mcp_siigo_unofficial.server.approval import (
@@ -39,7 +41,7 @@ from mcp_siigo_unofficial.server.transport import (
 )
 from mcp_siigo_unofficial.server.write_gate import WriteSwitch
 from mcp_siigo_unofficial.siigo import DEFAULT_BASE_URL, SiigoClient, SiigoCredentials, SiigoError
-from mcp_siigo_unofficial.vault import KeyringKeyStore, KeyStore, Vault
+from mcp_siigo_unofficial.vault import KeyringKeyStore, KeyStore, Vault, VaultTokenStore
 
 log = logging.getLogger(__name__)
 
@@ -59,7 +61,12 @@ class AppRuntime:
         self.vault = vault
         self.write_switch = WriteSwitch(vault)
         self.write_switch.reset_at_start()  # plan P9: off at every start
-        self.siigo = SiigoClient(vault.load_siigo_credentials, base_url=siigo_base_url())
+        # Q2e: the tray app and every --stdio process share one Siigo token.
+        self.siigo = SiigoClient(
+            vault.load_siigo_credentials,
+            base_url=siigo_base_url(),
+            token_store=VaultTokenStore(vault),
+        )
         self.approvals = ApprovalBroker()
         self.approvals.on_event = vault.add_event
         self.write_switch.add_listener(self._on_write_switch)
@@ -212,6 +219,16 @@ class AppRuntime:
 
     def client_setups(self) -> list[ClientSetup]:
         return build_setups(self.url, self.bearer_key)
+
+    # ------------------------------------------------------------------ AI apps
+    def client_spec(self, transport: Transport) -> ServerSpec:
+        """How AI apps start or reach this server (one-click plan v3, Q2)."""
+        if transport == "http":
+            return ServerSpec.http(self.url, self.bearer_key)
+        return ServerSpec.stdio(stdio_command())
+
+    def client_installer(self, env: Environment | None = None) -> Installer:
+        return Installer(env or Environment.current(), self.client_spec)
 
     # ------------------------------------------------------------------ shutdown
     def shutdown(self) -> None:

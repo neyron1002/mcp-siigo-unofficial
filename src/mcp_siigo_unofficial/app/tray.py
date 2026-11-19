@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from mcp_siigo_unofficial import __version__
 from mcp_siigo_unofficial.app.approval_window import ApprovalWindow
+from mcp_siigo_unofficial.app.connect_window import ConnectWindow, state_text
 from mcp_siigo_unofficial.app.dialogs import (
     AboutDialog,
     AutomaticApprovalDialog,
@@ -22,6 +23,8 @@ from mcp_siigo_unofficial.app.dialogs import (
 from mcp_siigo_unofficial.app.icons import app_icon
 from mcp_siigo_unofficial.app.runtime import AppRuntime
 from mcp_siigo_unofficial.autostart import Autostart, launch_command
+from mcp_siigo_unofficial.clients import ActionResult, ClientStatus, Installer
+from mcp_siigo_unofficial.clients.restart import restart_claude_desktop
 from mcp_siigo_unofficial.i18n import RELEASES_URL, Translator
 from mcp_siigo_unofficial.server.approval import (
     ApprovalMode,
@@ -31,6 +34,11 @@ from mcp_siigo_unofficial.server.approval import (
 )
 
 NOTIFICATION_OPENS_WINDOW_S = 15.0  # W3
+#: One-click plan v3: the Connect window was shown once (Q12), and the AI apps seen so far (Q4).
+SETTING_CONNECT_OFFERED = "clients.connect_offered"
+SETTING_KNOWN_APPS = "clients.known_apps"
+CLIENT_CHECK_FIRST_MS = 30_000
+CLIENT_CHECK_EVERY_MS = 4 * 60 * 60 * 1000
 
 
 def _minutes_left(seconds: float) -> int:
@@ -48,15 +56,26 @@ class _Bridge(QObject):
     approval_requested = Signal(object)  # ApprovalRequest
     approval_closed = Signal(str)  # request id (timed out)
     grants_changed = Signal()
+    clients_checked = Signal(object, object)  # statuses, repair results
+    clients_disconnected = Signal(object)  # results
 
 
 class TrayController(QObject):
     """Owns the tray icon, its menu, and the dialogs."""
 
     def __init__(
-        self, runtime: AppRuntime, tr: Translator, autostart: Autostart, app: QApplication
+        self,
+        runtime: AppRuntime,
+        tr: Translator,
+        autostart: Autostart,
+        app: QApplication,
+        installer: Installer | None = None,
     ) -> None:
         super().__init__()
+        self._installer = installer
+        self.connect_window: ConnectWindow | None = None
+        self._last_notice = ""
+        self._client_lock = threading.Lock()
         self.runtime = runtime
         self.tr_ = tr
         self.autostart = autostart
@@ -84,6 +103,11 @@ class TrayController(QObject):
         self._grant_timer = QTimer(self)
         self._grant_timer.setInterval(15_000)
         self._grant_timer.timeout.connect(self.refresh)
+        self._bridge.clients_checked.connect(self._on_clients_checked)
+        self._bridge.clients_disconnected.connect(self._on_clients_disconnected)
+        self._client_timer = QTimer(self)
+        self._client_timer.setInterval(CLIENT_CHECK_EVERY_MS)
+        self._client_timer.timeout.connect(self.check_clients)
 
         self.tray = QSystemTrayIcon(self._icon_normal)
         self.menu = QMenu()
@@ -106,6 +130,8 @@ class TrayController(QObject):
         self.stop_auto_action = QAction()
         self.stop_auto_action.triggered.connect(self.stop_automatic)
         self.copy_menu = QMenu()
+        self.clients_menu = QMenu()
+        self.clients_menu.aboutToShow.connect(self._fill_clients_menu)
         self.settings_action = QAction()
         self.settings_action.triggered.connect(self.show_settings)
         self.autostart_action = QAction()
@@ -126,6 +152,7 @@ class TrayController(QObject):
         self.menu.addMenu(self.auto_menu)
         self.menu.addAction(self.auto_status_action)
         self.menu.addAction(self.stop_auto_action)
+        self.menu.addMenu(self.clients_menu)
         self.menu.addMenu(self.copy_menu)
         self.menu.addAction(self.settings_action)
         self.menu.addAction(self.autostart_action)
@@ -136,7 +163,7 @@ class TrayController(QObject):
         self.menu.aboutToShow.connect(self.refresh)
         self.tray.setContextMenu(self.menu)
         self.tray.activated.connect(self._on_activated)
-        self.tray.messageClicked.connect(self._open_waiting_approvals)
+        self.tray.messageClicked.connect(self._on_message_clicked)
         self.settings_dialog: SettingsDialog | None = None
         self.about_dialog: AboutDialog | None = None
         self.retranslate()
@@ -145,6 +172,7 @@ class TrayController(QObject):
     def retranslate(self) -> None:
         tr = self.tr_
         self.copy_menu.setTitle(tr("tray.copy_setup"))
+        self.clients_menu.setTitle(tr("tray.clients"))
         self.settings_action.setText(tr("tray.settings"))
         self.autostart_action.setText(tr("tray.autostart"))
         self.updates_action.setText(tr("tray.updates"))
@@ -271,6 +299,13 @@ class TrayController(QObject):
             request, received = waiting
             self._open_approval(request, request.timeout_s - (time.monotonic() - received))
 
+    def _on_message_clicked(self) -> None:
+        """A click on our notification: waiting approvals first, else the Connect window."""
+        if self.waiting_approvals:
+            self._open_waiting_approvals()
+        elif self._last_notice == "clients":
+            self.show_connect()
+
     def _open_waiting_approvals(self) -> None:
         """The user clicked the notification: open every waiting approval now."""
         for request_id in list(self.waiting_approvals):
@@ -336,7 +371,8 @@ class TrayController(QObject):
         clipboard.setText(text)
         self.notify(self.tr_("notify.copied.title"), self.tr_("notify.copied.body", client=label))
 
-    def notify(self, title: str, message: str, *, warning: bool = False) -> None:
+    def notify(self, title: str, message: str, *, warning: bool = False, kind: str = "") -> None:
+        self._last_notice = kind
         if QSystemTrayIcon.isSystemTrayAvailable() and self.tray.isVisible():
             icon = (
                 QSystemTrayIcon.MessageIcon.Warning
@@ -361,6 +397,160 @@ class TrayController(QObject):
         self.about_dialog = AboutDialog(self.tr_)
         self.about_dialog.show()
         self.about_dialog.raise_()
+
+    # ------------------------------------------------------------------ AI apps
+    @property
+    def installer(self) -> Installer:
+        """Built on first use: finding the AI apps may ask the login shell (macOS)."""
+        if self._installer is None:
+            self._installer = self.runtime.client_installer()
+        return self._installer
+
+    def show_connect(self) -> None:
+        if self.connect_window is not None and self.connect_window.isVisible():
+            self.connect_window.raise_()
+            self.connect_window.activateWindow()
+            return
+        installer = self.installer
+        self.connect_window = ConnectWindow(
+            installer, self.tr_, lambda: restart_claude_desktop(installer.env)
+        )
+        self.connect_window.finished.connect(lambda _=0: self._remember_known_apps())
+        self.connect_window.show()
+        self.connect_window.raise_()
+        self.connect_window.activateWindow()
+
+    def offer_connect_once(self) -> bool:
+        """Q12: show the Connect window once, on the first start or after an update from
+        0.1.x, when an AI app is installed. True if it was shown."""
+        vault = self.runtime.vault
+        if vault.get_setting(SETTING_CONNECT_OFFERED):
+            return False
+        with self._client_lock:
+            statuses = self.installer.status()
+        if not any(s.installed for s in statuses):
+            return False
+        vault.set_setting(SETTING_CONNECT_OFFERED, True)
+        self.show_connect()
+        return True
+
+    def start_client_checks(self) -> None:
+        """Repair our entries and look for new AI apps soon after start, then every 4 hours."""
+        QTimer.singleShot(CLIENT_CHECK_FIRST_MS, self.check_clients)
+        self._client_timer.start()
+
+    def check_clients(self) -> None:
+        """Q14 repair and Q4 detection on a worker thread (AI app commands can be slow)."""
+
+        def work() -> None:
+            try:
+                with self._client_lock:
+                    repaired = self.installer.repair()
+                    statuses = self.installer.status()
+            except Exception:  # a check must never crash the tray
+                return
+            self._bridge.clients_checked.emit(statuses, repaired)
+
+        threading.Thread(target=work, name="ai-apps-check", daemon=True).start()
+
+    def _on_clients_checked(self, statuses: object, repaired: object) -> None:
+        tr = self.tr_
+        results = repaired if isinstance(repaired, list) else []
+        fixed = [
+            r.label for r in results if isinstance(r, ActionResult) and r.outcome == "repaired"
+        ]
+        if fixed:
+            self.notify(
+                tr("notify.clients.repaired.title"),
+                tr("notify.clients.repaired.body", apps=", ".join(fixed)),
+            )
+        if not isinstance(statuses, list):
+            return
+        items = [s for s in statuses if isinstance(s, ClientStatus)]
+        new = self.new_apps(items)
+        self._remember_known_apps(items)
+        if new and not (self.connect_window is not None and self.connect_window.isVisible()):
+            self.notify(
+                tr("notify.clients.found.title"),
+                tr("notify.clients.found.body", apps=", ".join(s.label for s in new)),
+                kind="clients",
+            )
+
+    def new_apps(self, statuses: list[ClientStatus]) -> list[ClientStatus]:
+        """Installed, not connected, and never seen before (Q4: only ask, never change)."""
+        vault = self.runtime.vault
+        known = vault.get_setting(SETTING_KNOWN_APPS)
+        if not vault.get_setting(SETTING_CONNECT_OFFERED) or not isinstance(known, list):
+            return []
+        return [
+            s
+            for s in statuses
+            if s.installed and s.state in ("not_connected", "conflict") and s.id not in known
+        ]
+
+    def _remember_known_apps(self, statuses: list[ClientStatus] | None = None) -> None:
+        if statuses is None:
+            try:
+                with self._client_lock:
+                    statuses = self.installer.status()
+            except Exception:
+                return
+        vault = self.runtime.vault
+        known = vault.get_setting(SETTING_KNOWN_APPS)
+        ids = set(known) if isinstance(known, list) else set()
+        ids.update(s.id for s in statuses if s.installed)
+        vault.set_setting(SETTING_KNOWN_APPS, sorted(ids))
+
+    def _fill_clients_menu(self) -> None:
+        tr = self.tr_
+        self.clients_menu.clear()
+        try:
+            with self._client_lock:
+                statuses = [s for s in self.installer.status() if s.installed]
+        except Exception:
+            statuses = []
+        if not statuses:
+            self.clients_menu.addAction(tr("tray.clients.none")).setEnabled(False)
+        for status in statuses:
+            line = tr("tray.clients.line", app=status.label, state=state_text(tr, status))
+            self.clients_menu.addAction(line).setEnabled(False)
+        self.clients_menu.addSeparator()
+        self.clients_menu.addAction(tr("tray.clients.connect")).triggered.connect(self.show_connect)
+        disconnect = self.clients_menu.addAction(tr("tray.clients.disconnect_all"))
+        disconnect.setEnabled(any(s.state in ("connected", "needs_repair") for s in statuses))
+        disconnect.triggered.connect(self.ask_disconnect_all)
+
+    def ask_disconnect_all(self) -> None:
+        box = QMessageBox(
+            QMessageBox.Icon.Question,
+            self.tr_("app.name"),
+            self.tr_("tray.clients.confirm_disconnect"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if box.exec() == QMessageBox.StandardButton.Yes:
+            self.disconnect_all_clients()
+
+    def disconnect_all_clients(self) -> None:
+        def work() -> None:
+            try:
+                with self._client_lock:
+                    results = self.installer.disconnect()
+            except Exception as exc:
+                results = [ActionResult("-", "-", "failed", detail=str(exc))]
+            self._bridge.clients_disconnected.emit(results)
+
+        threading.Thread(target=work, name="ai-apps-disconnect", daemon=True).start()
+
+    def _on_clients_disconnected(self, results: object) -> None:
+        items = (
+            [r for r in results if isinstance(r, ActionResult)] if isinstance(results, list) else []
+        )
+        done = [r.label for r in items if r.outcome == "disconnected"]
+        if done:
+            self.notify(
+                self.tr_("notify.clients.disconnected.title"),
+                self.tr_("notify.clients.disconnected.body", apps=", ".join(done)),
+            )
 
     # ------------------------------------------------------------------ updates
     def check_for_updates(self, *, interactive: bool) -> None:

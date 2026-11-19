@@ -6,7 +6,9 @@ Installs the file into a clean temporary user folder and checks:
    and ``--selftest`` passes there (Qt headless, vault, MCP ``tools/list``, HTTPS);
 2. the installed launcher starts the current version with no extraction;
 3. ``--stdio`` answers ``tools/list`` to a real MCP client;
-4. ``--uninstall`` removes the installed versions.
+4. ``--connect-clients`` adds the Siigo server to an AI app in a temporary home
+   folder, keeping its other settings, and ``--disconnect-clients`` restores them;
+5. ``--uninstall`` removes the installed versions.
 
 On macOS it checks the ``.app`` inside the DMG instead.
 
@@ -89,6 +91,41 @@ async def list_tools_over_stdio(command: str, args: list[str], env: dict[str, st
             return len((await client.list_tools()).tools)
 
 
+def smoke_clients(command: Path, workdir: Path, env: dict[str, str]) -> None:
+    """One-click connect (plan v3, phase 8) against a fake home folder, never the runner's."""
+    fake_home = workdir / "ai-home"
+    fake_home.mkdir(exist_ok=True)
+    other = {"command": "node", "args": ["x.js"]}
+    original = {"mcpServers": {"other": other}}
+    settings = fake_home / ".claude.json"
+    settings.write_text(json.dumps(original), encoding="utf-8")
+    client_env = {
+        **env,
+        "HOME": str(fake_home),
+        "USERPROFILE": str(fake_home),
+        "MCP_SIIGO_UNOFFICIAL_NO_LOGIN_SHELL": "1",
+    }
+    flags = ["--client", "claude-code"]
+    result = run([str(command), "--connect-clients", *flags], client_env)
+    check(result.returncode == 0, "--connect-clients connects Claude Code")
+    data = json.loads(settings.read_text(encoding="utf-8"))
+    entry = data.get("mcpServers", {}).get("siigo", {})
+    check(
+        entry.get("args") == ["--stdio"], f"the Siigo entry starts the app with --stdio ({entry})"
+    )
+    check(Path(entry.get("command", "")).exists(), "the Siigo entry points to an existing file")
+    check(data["mcpServers"].get("other") == other, "other servers are kept")
+    result = run([str(command), "--list-clients", *flags], client_env)
+    listed = json.loads(result.stdout)["clients"][0]
+    check(listed["state"] == "connected", f"--list-clients shows it connected ({listed['state']})")
+    result = run([str(command), "--disconnect-clients", *flags], client_env)
+    check(result.returncode == 0, "--disconnect-clients exits cleanly")
+    # Claude Code's own command (when installed) may add its own fields to the file, so
+    # only the server list is compared.
+    servers = json.loads(settings.read_text(encoding="utf-8")).get("mcpServers", {})
+    check(servers == {"other": other}, f"--disconnect-clients removes only ours ({list(servers)})")
+
+
 def smoke_launcher(artifact: Path, home: Path, env: dict[str, str], offline: bool) -> None:
     extra = ["--offline"] if offline else []
     if not sys.platform.startswith("win"):
@@ -107,6 +144,7 @@ def smoke_launcher(artifact: Path, home: Path, env: dict[str, str], offline: boo
     check(result.returncode == 0, "the installed launcher runs the current version")
     tools = anyio.run(list_tools_over_stdio, str(launcher), ["--stdio"], env)
     check(tools == EXPECTED_TOOLS, f"--stdio lists {EXPECTED_TOOLS} tools (got {tools})")
+    smoke_clients(launcher, home.parent, env)
     # The updater's install path: self-test of the new version, then the switch.
     result = run([str(artifact), "--update", "--no-start"], env)
     check(result.returncode == 0, "--update runs the self-test and switches")
@@ -143,6 +181,7 @@ def smoke_macos(artifact: Path, workdir: Path, env: dict[str, str], offline: boo
     check(result.returncode == 0, "--selftest passes in the copied .app")
     tools = anyio.run(list_tools_over_stdio, str(exe), ["--stdio"], env)
     check(tools == EXPECTED_TOOLS, f"--stdio lists {EXPECTED_TOOLS} tools (got {tools})")
+    smoke_clients(exe, workdir, env)
 
 
 def main() -> int:
