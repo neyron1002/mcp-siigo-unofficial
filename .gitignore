@@ -28,3 +28,6 @@ Thumbs.db
 
 # Local reference material (the owner's earlier MCP server); not part of the repository
 references/
+
+# Git worktrees for parallel work sessions
+.worktrees/

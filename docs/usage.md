@@ -22,6 +22,8 @@ Read tools only read your Siigo data. Write tools create or change **real** reco
 3. **Visible.** While write actions are on, the tray icon has a red badge and the system shows a notification.
 4. **Approval of every write.** Each write needs your approval. If your AI client supports it (MCP elicitation), it shows an Approve/Reject question. Otherwise the first call only returns a preview and a one-time code (`confirmation_id`, valid for 5 minutes, for those exact arguments); the AI must show you the preview and use the code only after you approve.
 
+   **Known limit (v0.1.0):** the Approve/Reject question appears in Claude Code in a terminal. In Claude Desktop, the question never appears and every write is rejected. See [Troubleshooting](troubleshooting.md#a-write-says-the-user-did-not-approve-but-nobody-asked-you).
+
 Turn write actions off when you finish. You are responsible for the actions your AI client executes; see the [disclaimer](../README.md#disclaimer-and-liability).
 
 ## Updates
