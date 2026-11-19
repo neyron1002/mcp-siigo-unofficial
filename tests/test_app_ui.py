@@ -25,6 +25,7 @@ from PySide6.QtWidgets import QApplication, QDialog
 
 from mcp_siigo_unofficial.app import dialogs as dialogs_module
 from mcp_siigo_unofficial.app import tray as tray_module
+from mcp_siigo_unofficial.app.approval_window import ApprovalWindow, format_seconds
 from mcp_siigo_unofficial.app.dialogs import (
     AboutDialog,
     SettingsDialog,
@@ -39,6 +40,7 @@ from mcp_siigo_unofficial.autostart import (
 )
 from mcp_siigo_unofficial.i18n import SETTING_LANGUAGE, Translator
 from mcp_siigo_unofficial.selftest import run_selftest
+from mcp_siigo_unofficial.server.approval import ApprovalRequest, Decision
 from mcp_siigo_unofficial.server.transport import SETTING_PORT
 from mcp_siigo_unofficial.siigo import SiigoCredentials
 from mcp_siigo_unofficial.vault import MemoryKeyStore
@@ -348,6 +350,124 @@ def test_tray_settings_window_and_retranslate(tray: TrayController, tr: Translat
     tray.show_about()
     assert tray.about_dialog is not None
     tray.about_dialog.close()
+
+
+# ---------------------------------------------------------------------- approval window
+def approval_request(**kw: Any) -> ApprovalRequest:
+    values: dict[str, Any] = {
+        "tool": "siigo_create_product",
+        "title": "Create product",
+        "method": "POST",
+        "url": "https://api.siigo.test/v1/products",
+        "query": {},
+        "body": {"code": "TEST1", "name": "Test"},
+        "summary": [("code", "TEST1"), ("name", "Test")],
+        "client": "Claude Desktop",
+        "connection": "c1",
+    }
+    values.update(kw)
+    return ApprovalRequest(**values)
+
+
+@pytest.mark.parametrize(
+    ("button", "decision"),
+    [
+        ("approve_button", Decision.APPROVE),
+        ("similar_button", Decision.APPROVE_SIMILAR),
+        ("reject_button", Decision.REJECT),
+    ],
+)
+def test_approval_window_buttons(
+    qapp: QApplication, tr: Translator, button: str, decision: Decision
+) -> None:
+    answers: list[tuple[str, Decision]] = []
+    request = approval_request()
+    window = ApprovalWindow(request, tr, lambda rid, d: answers.append((rid, d)))
+    window.bring_to_front()
+    assert window.isVisible()
+    assert window.reject_button.isDefault()  # Enter rejects, never approves
+    getattr(window, button).click()
+    window.close()  # a second answer is never sent
+    assert answers == [(request.id, decision)]
+
+
+def test_approval_window_details_escape_and_close(qapp: QApplication, tr: Translator) -> None:
+    answers: list[Decision] = []
+    window = ApprovalWindow(approval_request(), tr, lambda rid, d: answers.append(d))
+    window.show()
+    assert not window.details.isVisible()
+    window.toggle_details()
+    assert window.details.isVisible()
+    assert '"code": "TEST1"' in window.details.toPlainText()
+    assert window.details_button.text() == "Hide details"
+    window.reject()  # Escape key
+    assert answers == [Decision.REJECT]
+
+    closed: list[Decision] = []
+    other = ApprovalWindow(approval_request(), tr, lambda rid, d: closed.append(d))
+    other.show()
+    other.close()  # title bar close button
+    assert closed == [Decision.REJECT]
+
+
+def test_approval_window_countdown_and_silent_close(qapp: QApplication, tr: Translator) -> None:
+    now = [100.0]
+    answers: list[Decision] = []
+    window = ApprovalWindow(
+        approval_request(timeout_s=120.0),
+        tr,
+        lambda rid, d: answers.append(d),
+        clock=lambda: now[0],
+    )
+    window.show()
+    assert "2:00" in window.countdown.text()
+    now[0] += 61
+    window._tick()
+    assert "0:59" in window.countdown.text()
+    now[0] += 60
+    window._tick()  # time is over: closes without answering (the broker reports timeout)
+    assert not window.isVisible()
+    assert answers == []
+    assert format_seconds(0) == "0:00"
+    assert format_seconds(119.2) == "2:00"
+
+
+def test_tray_shows_approval_windows_and_grants(
+    tray: TrayController, runtime: AppRuntime, tr: Translator
+) -> None:
+    runtime.write_switch.enable(accepted_responsibility=True)
+    process_events()
+    request = approval_request()
+    runtime.approvals.on_ask(request)  # type: ignore[misc]  # as the broker does
+    process_events(until=lambda: request.id in tray.approval_windows)
+    window = tray.approval_windows[request.id]
+    assert window.isVisible()
+    window.similar_button.click()
+    assert request.id not in tray.approval_windows
+
+    runtime.approvals._start_grant(request)
+    process_events()
+    tray.refresh()
+    assert tray.grants_action.isVisible()
+    assert "Create product" in tray.grants_action.text()
+    assert "10 min left" in tray.grants_action.text()
+    tray.stop_grants()
+    assert not tray.grants_action.isVisible()
+    assert runtime.approvals.grants() == []
+
+    second = approval_request()
+    runtime.approvals.on_ask(second)  # type: ignore[misc]
+    process_events(until=lambda: second.id in tray.approval_windows)
+    runtime.write_switch.disable()  # writes off: open windows close as rejections
+    process_events(until=lambda: not tray.approval_windows)
+    assert tray.approval_windows == {}
+
+    third = approval_request()
+    runtime.approvals.on_ask(third)  # type: ignore[misc]
+    process_events(until=lambda: third.id in tray.approval_windows)
+    runtime.approvals.on_close(third.id)  # type: ignore[misc]  # broker timeout
+    process_events(until=lambda: not tray.approval_windows)
+    assert tray.approval_windows == {}
 
 
 # ---------------------------------------------------------------------- self-test

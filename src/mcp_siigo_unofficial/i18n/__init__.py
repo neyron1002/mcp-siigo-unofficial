@@ -233,6 +233,63 @@ _STRINGS: dict[str, dict[Language, str]] = {
     "about.website": {"en": "Website", "es": "Sitio web"},
     "about.source": {"en": "Source code", "es": "Código fuente"},
     "about.close": {"en": "Close", "es": "Cerrar"},
+    # Write approval window (plan section 5.1, 2026-11-19)
+    "approval.window_title": {
+        "en": "Approve a write in Siigo",
+        "es": "Aprobar una escritura en Siigo",
+    },
+    "approval.headline": {
+        "en": "{client} wants to run: {title}",
+        "es": "{client} quiere ejecutar: {title}",
+    },
+    "approval.warning": {
+        "en": "This creates or changes REAL data in your Siigo company (invoices go to "
+        "the DIAN). Nothing is sent unless you approve.",
+        "es": "Esto crea o cambia datos REALES en su empresa de Siigo (las facturas van a "
+        "la DIAN). No se envía nada si usted no aprueba.",
+    },
+    "approval.field.action": {"en": "Action", "es": "Acción"},
+    "approval.field.request": {"en": "Request", "es": "Petición"},
+    "approval.field.client": {"en": "Asked by", "es": "Solicitado por"},
+    "approval.details.show": {"en": "Show details", "es": "Mostrar detalles"},
+    "approval.details.hide": {"en": "Hide details", "es": "Ocultar detalles"},
+    "approval.countdown": {
+        "en": "Closes in {time} (rejected if nobody answers)",
+        "es": "Se cierra en {time} (se rechaza si nadie responde)",
+    },
+    "approval.approve": {"en": "Approve", "es": "Aprobar"},
+    "approval.reject": {"en": "Reject", "es": "Rechazar"},
+    "approval.approve_similar": {
+        "en": "Approve similar writes for 10 minutes",
+        "es": "Aprobar escrituras similares por 10 minutos",
+    },
+    "approval.similar_hint": {
+        "en": "Similar = the same action ({title}) from the same AI app connection.",
+        "es": "Similar = la misma acción ({title}) desde la misma conexión de la app de IA.",
+    },
+    "notify.approval.title": {"en": "Approval needed", "es": "Se necesita aprobación"},
+    "notify.approval.body": {
+        "en": "{client} wants to run {title} in Siigo. Open the window to approve or reject.",
+        "es": "{client} quiere ejecutar {title} en Siigo. Abra la ventana para aprobar o rechazar.",
+    },
+    "tray.grants": {
+        "en": "Similar writes approved: {title} ({minutes} min left)",
+        "es": "Escrituras similares aprobadas: {title} (quedan {minutes} min)",
+    },
+    "tray.grants.stop": {
+        "en": "Stop approving similar writes now",
+        "es": "Dejar de aprobar escrituras similares ahora",
+    },
+    "notify.grant.title": {
+        "en": "Similar writes approved for 10 minutes",
+        "es": "Escrituras similares aprobadas por 10 minutos",
+    },
+    "notify.grant.body": {
+        "en": "{title} from the same AI app runs without asking until the time ends. "
+        "Use the tray menu to stop it now.",
+        "es": "{title} desde la misma app de IA se ejecuta sin preguntar hasta que termine "
+        "el tiempo. Use el menú del icono para detenerlo ahora.",
+    },
 }
 
 

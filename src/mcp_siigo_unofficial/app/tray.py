@@ -5,16 +5,18 @@ from __future__ import annotations
 import os
 import threading
 
-from PySide6.QtCore import QObject, QUrl, Signal
+from PySide6.QtCore import QObject, QTimer, QUrl, Signal
 from PySide6.QtGui import QAction, QDesktopServices, QGuiApplication
 from PySide6.QtWidgets import QApplication, QMenu, QMessageBox, QSystemTrayIcon
 
 from mcp_siigo_unofficial import __version__
+from mcp_siigo_unofficial.app.approval_window import ApprovalWindow
 from mcp_siigo_unofficial.app.dialogs import AboutDialog, SettingsDialog, WriteActionsDialog
 from mcp_siigo_unofficial.app.icons import app_icon
 from mcp_siigo_unofficial.app.runtime import AppRuntime
 from mcp_siigo_unofficial.autostart import Autostart, launch_command
 from mcp_siigo_unofficial.i18n import RELEASES_URL, Translator
+from mcp_siigo_unofficial.server.approval import ApprovalRequest, Decision
 
 
 class _Bridge(QObject):
@@ -24,6 +26,9 @@ class _Bridge(QObject):
     show_requested = Signal()
     update_checked = Signal(object, object, bool)  # release or None, error or None, interactive
     update_downloaded = Signal(object, object)  # path or None, error or None
+    approval_requested = Signal(object)  # ApprovalRequest
+    approval_closed = Signal(str)  # request id (timed out)
+    grants_changed = Signal()
 
 
 class TrayController(QObject):
@@ -47,6 +52,16 @@ class TrayController(QObject):
         self._update_busy = False
         runtime.write_switch.add_listener(self._bridge.write_changed.emit)
         runtime.on_show_requested = self._bridge.show_requested.emit
+        self._bridge.approval_requested.connect(self.show_approval)
+        self._bridge.approval_closed.connect(self._close_approval)
+        self._bridge.grants_changed.connect(self.refresh)
+        runtime.approvals.on_ask = self._bridge.approval_requested.emit
+        runtime.approvals.on_close = self._bridge.approval_closed.emit
+        runtime.approvals.on_grants_changed = self._bridge.grants_changed.emit
+        self.approval_windows: dict[str, ApprovalWindow] = {}
+        self._grant_timer = QTimer(self)
+        self._grant_timer.setInterval(15_000)
+        self._grant_timer.timeout.connect(self.refresh)
 
         self.tray = QSystemTrayIcon(self._icon_normal)
         self.menu = QMenu()
@@ -55,6 +70,10 @@ class TrayController(QObject):
         self.write_action = QAction()
         self.write_action.setCheckable(True)
         self.write_action.triggered.connect(self.toggle_write_actions)
+        self.grants_action = QAction()
+        self.grants_action.setEnabled(False)
+        self.stop_grants_action = QAction()
+        self.stop_grants_action.triggered.connect(self.stop_grants)
         self.copy_menu = QMenu()
         self.settings_action = QAction()
         self.settings_action.triggered.connect(self.show_settings)
@@ -71,6 +90,8 @@ class TrayController(QObject):
         self.menu.addAction(self.status_action)
         self.menu.addSeparator()
         self.menu.addAction(self.write_action)
+        self.menu.addAction(self.grants_action)
+        self.menu.addAction(self.stop_grants_action)
         self.menu.addMenu(self.copy_menu)
         self.menu.addAction(self.settings_action)
         self.menu.addAction(self.autostart_action)
@@ -94,6 +115,7 @@ class TrayController(QObject):
         self.updates_action.setText(tr("tray.updates"))
         self.about_action.setText(tr("tray.about"))
         self.quit_action.setText(tr("tray.quit"))
+        self.stop_grants_action.setText(tr("tray.grants.stop"))
         self.copy_menu.clear()
         for setup in self.runtime.client_setups():
             action = self.copy_menu.addAction(setup.label)
@@ -116,6 +138,17 @@ class TrayController(QObject):
         self.write_action.setText(tr("tray.write.on") if enabled else tr("tray.write.off"))
         self.copy_menu.setEnabled(self.runtime.server_running)
         self.autostart_action.setChecked(self.autostart.is_enabled())
+        grants = self.runtime.approvals.grants()
+        if grants:
+            first = grants[0]
+            minutes = int(self.runtime.approvals.seconds_left(first) // 60) + 1
+            self.grants_action.setText(tr("tray.grants", title=first.title, minutes=minutes))
+            if not self._grant_timer.isActive():
+                self._grant_timer.start()
+        elif self._grant_timer.isActive():
+            self._grant_timer.stop()
+        self.grants_action.setVisible(bool(grants))
+        self.stop_grants_action.setVisible(bool(grants))
         self.tray.setIcon(self._icon_write if enabled else self._icon_normal)
         self.tray.setToolTip(tr("tray.tooltip.write") if enabled else tr("tray.tooltip"))
         self.app.setWindowIcon(self.tray.icon())
@@ -137,11 +170,47 @@ class TrayController(QObject):
 
     def _on_write_changed(self, enabled: bool) -> None:
         tr = self.tr_
+        if not enabled:  # writes off: open approval windows become rejections
+            for request_id, window in list(self.approval_windows.items()):
+                self.runtime.approvals.answer(request_id, Decision.REJECT)
+                window.close_without_answer()
+            self.approval_windows.clear()
         self.refresh()
         if enabled:
             self.notify(tr("notify.write.on.title"), tr("notify.write.on.body"), warning=True)
         else:
             self.notify(tr("notify.write.off.title"), tr("notify.write.off.body"))
+
+    # ------------------------------------------------------------------ approvals
+    def show_approval(self, request: object) -> None:
+        """Show the approval window for one write (main thread)."""
+        if not isinstance(request, ApprovalRequest):
+            return
+        window = ApprovalWindow(request, self.tr_, self._approval_answered)
+        window.finished.connect(lambda _=0, rid=request.id: self.approval_windows.pop(rid, None))
+        self.approval_windows[request.id] = window
+        window.bring_to_front()
+        self.notify(
+            self.tr_("notify.approval.title"),
+            self.tr_("notify.approval.body", client=request.client, title=request.title),
+            warning=True,
+        )
+
+    def _approval_answered(self, request_id: str, decision: Decision) -> None:
+        window = self.approval_windows.pop(request_id, None)
+        self.runtime.approvals.answer(request_id, decision)
+        if decision is Decision.APPROVE_SIMILAR and window is not None:
+            title = window.request.title
+            self.notify(self.tr_("notify.grant.title"), self.tr_("notify.grant.body", title=title))
+
+    def _close_approval(self, request_id: str) -> None:
+        window = self.approval_windows.pop(request_id, None)
+        if window is not None:
+            window.close_without_answer()
+
+    def stop_grants(self) -> None:
+        self.runtime.approvals.stop_grants()
+        self.refresh()
 
     def toggle_autostart(self) -> None:
         if self.autostart.is_enabled():

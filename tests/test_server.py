@@ -13,14 +13,16 @@ import pytest
 from mcp import Client
 from mcp.types import ElicitResult
 
-from conftest import FakeClock
 from mcp_siigo_unofficial.server.app import STATUS_TOOL, SiigoMCPServer, build_server
-from mcp_siigo_unofficial.server.catalog import load_catalog
-from mcp_siigo_unofficial.server.write_gate import (
-    EVENT_WRITE_ENABLED,
-    ConfirmationStore,
-    WriteSwitch,
+from mcp_siigo_unofficial.server.approval import (
+    ApprovalBroker,
+    ApprovalRequest,
+    Decision,
+    LocalApprover,
+    Outcome,
 )
+from mcp_siigo_unofficial.server.catalog import load_catalog
+from mcp_siigo_unofficial.server.write_gate import EVENT_WRITE_ENABLED, WriteSwitch
 from mcp_siigo_unofficial.siigo import SiigoClient, SiigoCredentials
 from mcp_siigo_unofficial.vault import MemoryKeyStore, Vault
 from mock_siigo import MockSiigo
@@ -47,19 +49,39 @@ def switch(vault: Vault) -> WriteSwitch:
     return write_switch
 
 
+class ScriptedApprover:
+    """Stands in for the Siigo approval window: answers with ``outcome`` and records."""
+
+    def __init__(self, outcome: Outcome = Outcome.APPROVED) -> None:
+        self.outcome = outcome
+        self.requests: list[ApprovalRequest] = []
+        self.before_answer: Any = None
+
+    async def approve(self, request: ApprovalRequest) -> Outcome:
+        self.requests.append(request)
+        if self.before_answer is not None:
+            self.before_answer()
+        return self.outcome
+
+
+@pytest.fixture
+def approver() -> ScriptedApprover:
+    return ScriptedApprover()
+
+
 @pytest.fixture
 async def server(
     mock_siigo: MockSiigo,
     credentials: SiigoCredentials,
     switch: WriteSwitch,
     vault: Vault,
-    clock: FakeClock,
+    approver: ScriptedApprover,
 ) -> AsyncIterator[SiigoMCPServer]:
     siigo = SiigoClient(
         lambda: credentials, base_url="https://api.siigo.test", transport=mock_siigo.transport()
     )
     async with siigo:
-        yield build_server(siigo, switch, vault=vault, confirmations=ConfirmationStore(clock=clock))
+        yield build_server(siigo, switch, vault=vault, approver=approver)
 
 
 def text(result: Any) -> str:
@@ -74,10 +96,6 @@ def payload(result: Any) -> Any:
 
 async def accept(context: Any, params: Any) -> ElicitResult:
     return ElicitResult(action="accept", content={"approve": True})
-
-
-async def reject(context: Any, params: Any) -> ElicitResult:
-    return ElicitResult(action="accept", content={"approve": False})
 
 
 async def decline(context: Any, params: Any) -> ElicitResult:
@@ -133,8 +151,9 @@ async def test_annotations_and_write_warnings(server: SiigoMCPServer, switch: Wr
         assert tool.annotations.destructive_hint is True
         assert tool.annotations.read_only_hint is False
         assert (tool.description or "").startswith("⚠ WRITE ACTION — REAL DATA IN SIIGO")
-        assert "confirmation_id" in tool.input_schema["properties"]
-        assert "approval" not in tool.input_schema["properties"]
+        assert "confirmation_id" not in tool.input_schema["properties"]
+        assert "ctx" not in tool.input_schema["properties"]
+        assert "approval window" in (tool.description or "")
         assert "body" in tool.input_schema["required"]
 
 
@@ -218,83 +237,15 @@ def test_switch_needs_acceptance(switch: WriteSwitch, vault: Vault) -> None:
 
 
 @pytest.mark.parametrize("mode", MODES)
-async def test_two_step_confirmation_without_elicitation(
+async def test_window_approval_executes(
     server: SiigoMCPServer,
     switch: WriteSwitch,
-    mock_siigo: MockSiigo,
     vault: Vault,
+    approver: ScriptedApprover,
     mode: str,
 ) -> None:
     switch.enable(accepted_responsibility=True)
     async with Client(server, mode=mode) as client:
-        preview = payload(await client.call_tool("siigo_create_invoice", {"body": INVOICE}))
-        assert preview["status"] == "confirmation_required"
-        assert preview["sent_to_siigo"] is False
-        assert preview["preview"]["method"] == "POST"
-        assert preview["preview"]["body"] == INVOICE
-        assert mock_siigo.data["invoices"] == {}
-
-        cid = preview["confirmation_id"]
-        done = payload(
-            await client.call_tool(
-                "siigo_create_invoice", {"body": INVOICE, "confirmation_id": cid}
-            )
-        )
-        assert done["name"] == "FV-1-1"
-        assert len(mock_siigo.data["invoices"]) == 1
-
-        reused = await client.call_tool(
-            "siigo_create_invoice", {"body": INVOICE, "confirmation_id": cid}
-        )
-        assert reused.is_error
-        assert "invalid_confirmation" in text(reused)
-    assert len(mock_siigo.data["invoices"]) == 1
-    executed = vault.events("write.executed")
-    assert [e.detail["approved_via"] for e in executed] == ["confirmation_id"]
-
-
-async def test_write_without_valid_confirmation_is_rejected(
-    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo, clock: FakeClock
-) -> None:
-    switch.enable(accepted_responsibility=True)
-    async with Client(server) as client:
-        made_up = await client.call_tool(
-            "siigo_create_invoice", {"body": INVOICE, "confirmation_id": "made-up"}
-        )
-        first = payload(await client.call_tool("siigo_create_invoice", {"body": INVOICE}))
-        changed = await client.call_tool(
-            "siigo_create_invoice",
-            {"body": {**INVOICE, "observations": "x"}, "confirmation_id": first["confirmation_id"]},
-        )
-        second = payload(await client.call_tool("siigo_create_invoice", {"body": INVOICE}))
-        clock.now += 301
-        expired = await client.call_tool(
-            "siigo_create_invoice", {"body": INVOICE, "confirmation_id": second["confirmation_id"]}
-        )
-        third = payload(await client.call_tool("siigo_create_customer", {"body": {"a": 1}}))
-        other_tool = await client.call_tool(
-            "siigo_create_product", {"body": {"a": 1}, "confirmation_id": third["confirmation_id"]}
-        )
-    for result in (made_up, changed, expired, other_tool):
-        assert result.is_error
-        assert "invalid_confirmation" in text(result)
-    assert mock_siigo.data["invoices"] == {}
-    assert mock_siigo.data["customers"] == {}
-    assert mock_siigo.data["products"] == {}
-
-
-@pytest.mark.parametrize("mode", MODES)
-async def test_elicitation_approve_executes(
-    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo, vault: Vault, mode: str
-) -> None:
-    switch.enable(accepted_responsibility=True)
-    seen: list[str] = []
-
-    async def approve_and_record(context: Any, params: Any) -> ElicitResult:
-        seen.append(params.message)
-        return ElicitResult(action="accept", content={"approve": True})
-
-    async with Client(server, mode=mode, elicitation_callback=approve_and_record) as client:
         created = payload(
             await client.call_tool("siigo_create_customer", {"body": {"name": ["Ana", "Ruiz"]}})
         )
@@ -305,56 +256,165 @@ async def test_elicitation_approve_executes(
             )
         )
     assert updated["name"] == ["Ana", "Pérez"]
-    assert "WRITE ACTION" in seen[0]
-    assert "POST https://api.siigo.test/v1/customers" in seen[0]
-    assert f"PUT https://api.siigo.test/v1/customers/{created['id']}" in seen[1]
+    first, second = approver.requests
+    assert (first.tool, first.method, first.url) == (
+        "siigo_create_customer",
+        "POST",
+        "https://api.siigo.test/v1/customers",
+    )
+    assert second.url == f"https://api.siigo.test/v1/customers/{created['id']}"
+    assert ("id", created["id"]) in second.summary
+    assert first.body == {"name": ["Ana", "Ruiz"]}
+    assert first.connection == second.connection  # same AI app connection
+    assert first.client != ""
     assert [e.detail["approved_via"] for e in vault.events("write.executed")] == [
-        "elicitation",
-        "elicitation",
+        "approved",
+        "approved",
     ]
 
 
-@pytest.mark.parametrize("mode", MODES)
-@pytest.mark.parametrize("callback", [reject, decline])
-async def test_elicitation_reject_or_decline_sends_nothing(
-    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo, mode: str, callback: Any
+@pytest.mark.parametrize(
+    ("outcome", "status"),
+    [(Outcome.REJECTED, "rejected_by_user"), (Outcome.TIMEOUT, "approval_timeout")],
+)
+async def test_rejected_or_unanswered_sends_nothing(
+    server: SiigoMCPServer,
+    switch: WriteSwitch,
+    mock_siigo: MockSiigo,
+    vault: Vault,
+    approver: ScriptedApprover,
+    outcome: Outcome,
+    status: str,
 ) -> None:
     switch.enable(accepted_responsibility=True)
-    async with Client(server, mode=mode, elicitation_callback=callback) as client:
+    approver.outcome = outcome
+    async with Client(server) as client:
         result = payload(await client.call_tool("siigo_create_invoice", {"body": INVOICE}))
-    assert result["status"] == "rejected_by_user"
+    assert result["status"] == status
+    assert result["sent_to_siigo"] is False
     assert mock_siigo.data["invoices"] == {}
     assert posts(mock_siigo) == []
+    assert [e.detail["outcome"] for e in vault.events("write.not_approved")] == [outcome.value]
 
 
-async def test_elicitation_ignores_a_confirmation_id(
-    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo
+async def test_unreachable_window_is_an_error_and_sends_nothing(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo, approver: ScriptedApprover
 ) -> None:
-    """With elicitation available, the user is always asked; a confirmation_id is not enough."""
     switch.enable(accepted_responsibility=True)
-    async with Client(server, elicitation_callback=decline) as client:
-        result = payload(
-            await client.call_tool(
-                "siigo_create_invoice", {"body": INVOICE, "confirmation_id": "anything"}
-            )
-        )
-    assert result["status"] == "rejected_by_user"
+    approver.outcome = Outcome.UNAVAILABLE
+    async with Client(server) as client:
+        result = await client.call_tool("siigo_create_invoice", {"body": INVOICE})
+    assert result.is_error
+    assert "approval_unavailable" in text(result)
     assert mock_siigo.data["invoices"] == {}
 
 
-async def test_switch_turned_off_between_preview_and_confirmation(
-    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo
+@pytest.mark.parametrize("mode", MODES)
+async def test_ai_app_automatic_decline_is_not_used(
+    server: SiigoMCPServer,
+    switch: WriteSwitch,
+    mock_siigo: MockSiigo,
+    approver: ScriptedApprover,
+    mode: str,
+) -> None:
+    """The v0.1.0 bug: Claude Desktop declines MCP elicitation without asking anyone.
+
+    The server no longer asks the AI app; only the Siigo window decides.
+    """
+    switch.enable(accepted_responsibility=True)
+    asked: list[Any] = []
+
+    async def auto_decline(context: Any, params: Any) -> ElicitResult:
+        asked.append(params)
+        return ElicitResult(action="decline")
+
+    async with Client(server, mode=mode, elicitation_callback=auto_decline) as client:
+        approver.outcome = Outcome.APPROVED
+        approved = await client.call_tool("siigo_create_invoice", {"body": INVOICE})
+        approver.outcome = Outcome.REJECTED
+        rejected = payload(await client.call_tool("siigo_create_invoice", {"body": INVOICE}))
+    assert not approved.is_error
+    assert rejected["status"] == "rejected_by_user"
+    assert asked == []
+    assert len(mock_siigo.data["invoices"]) == 1
+
+
+async def test_switch_turned_off_during_approval(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo, approver: ScriptedApprover
 ) -> None:
     switch.enable(accepted_responsibility=True)
+    approver.before_answer = switch.disable
     async with Client(server) as client:
-        first = payload(await client.call_tool("siigo_create_invoice", {"body": INVOICE}))
-        switch.disable()
-        result = await client.call_tool(
-            "siigo_create_invoice", {"body": INVOICE, "confirmation_id": first["confirmation_id"]}
-        )
+        result = await client.call_tool("siigo_create_invoice", {"body": INVOICE})
     assert result.is_error
     assert "write_actions_disabled" in text(result)
     assert mock_siigo.data["invoices"] == {}
+
+
+async def test_status_shows_the_approval_mode(server: SiigoMCPServer) -> None:
+    async with Client(server) as client:
+        status = payload(await client.call_tool(STATUS_TOOL, {}))
+    assert status["write_approval"] == "siigo_window"
+
+
+def test_no_schema_repeats_a_required_name() -> None:
+    """The Claude API rejects such schemas, and Claude Code then hides the tool."""
+
+    def walk(node: Any) -> Iterator[list[Any]]:
+        if isinstance(node, dict):
+            required = node.get("required")
+            if isinstance(required, list):
+                yield required
+            for value in node.values():
+                yield from walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from walk(value)
+
+    for tool in CATALOG.tools:
+        for required in walk(tool.body_schema):
+            assert len(required) == len(set(required)), tool.name
+
+
+async def test_similar_writes_grant_through_the_broker(
+    mock_siigo: MockSiigo, credentials: SiigoCredentials, switch: WriteSwitch, vault: Vault
+) -> None:
+    """Approve similar writes: the same tool from the same connection runs without asking."""
+    broker = ApprovalBroker()
+    shown: list[ApprovalRequest] = []
+
+    def window(request: ApprovalRequest) -> None:
+        shown.append(request)
+        decision = Decision.APPROVE_SIMILAR if len(shown) == 1 else Decision.APPROVE
+        broker.answer(request.id, decision)
+
+    broker.on_ask = window
+    switch.enable(accepted_responsibility=True)
+    siigo = SiigoClient(
+        lambda: credentials, base_url="https://api.siigo.test", transport=mock_siigo.transport()
+    )
+    async with siigo:
+        server = build_server(siigo, switch, vault=vault, approver=LocalApprover(broker))
+        async with Client(server, mode="legacy") as client:
+            for code in ("P1", "P2", "P3"):
+                body = {"code": code, "name": code, "account_group": 1}
+                assert not (await client.call_tool("siigo_create_product", {"body": body})).is_error
+            await client.call_tool("siigo_create_customer", {"body": {"name": ["A", "B"]}})
+            async with Client(server, mode="legacy") as other:  # another connection: asked
+                body = {"code": "P4", "name": "P4", "account_group": 1}
+                await other.call_tool("siigo_create_product", {"body": body})
+    assert [r.tool for r in shown] == [
+        "siigo_create_product",
+        "siigo_create_customer",
+        "siigo_create_product",
+    ]
+    assert [e.detail["approved_via"] for e in vault.events("write.executed")] == [
+        "approved_similar",
+        "granted",
+        "granted",
+        "approved",
+        "approved",
+    ]
 
 
 # ---------------------------------------------------------------------- notifications
