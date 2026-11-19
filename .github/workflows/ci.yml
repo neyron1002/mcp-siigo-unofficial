@@ -43,6 +43,8 @@ jobs:
         run: uv run ruff check
       - name: Ruff format
         run: uv run ruff format --check
+      - name: Docs link check
+        run: uv run --no-sync python scripts/check_docs.py
       - name: Mypy (strict)
         run: uv run mypy src
       - name: Pytest
