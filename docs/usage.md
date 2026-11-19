@@ -88,6 +88,10 @@ Nothing is sent anywhere except to the Siigo API (your requests) and to GitHub (
 | `launcher --stdio` | MCP server over stdio (what Claude Desktop and Codex run). |
 | `launcher --selftest [--offline]` | Checks Qt, the vault, the MCP server, and (unless `--offline`) HTTPS, without touching your real data. |
 | `launcher --update-now` | Checks for an update, downloads it, verifies it, and installs it without the tray. |
-| `launcher --uninstall [--purge-data]` | See [Uninstall](install.md#uninstall). |
+| `launcher --uninstall [--purge-data]` | Disconnects the AI apps, then see [Uninstall](install.md#uninstall). |
+| `launcher --list-clients` | Shows each AI app (Claude Code, Claude Desktop, Codex, Gemini CLI, VS Code) and whether the Siigo server is connected. Output is JSON. |
+| `launcher --connect-clients [--client NAME] [--transport stdio\|http] [--on-conflict ask\|keep-both\|replace]` | Adds the Siigo server to the AI apps found (all, or each `--client`), for every project of your user. stdio is the default; Claude Desktop always uses stdio. A backup `<file>.siigo-backup-<date>` is made first, and only the Siigo entry changes. If another program already uses the name `siigo`, it stops and asks (`ask`), unless you choose `keep-both` (ours is added as `siigo-unofficial`) or `replace`. |
+| `launcher --disconnect-clients [--client NAME]` | Removes only the Siigo entries this app added. |
+| `launcher --repair-clients` | Fixes the Siigo entries after the app moved to another folder. |
 
 `launcher` is in the app folder above (`launcher.exe` on Windows). On macOS, use `"/Applications/MCP Siigo Unofficial.app/Contents/MacOS/MCPSiigoUnofficial"` with the same options.

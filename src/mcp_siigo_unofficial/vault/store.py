@@ -35,6 +35,8 @@ _KEY_CHECK_PLAINTEXT = b"mcp-siigo-unofficial vault key check"
 FIELD_SIIGO_USERNAME = "siigo.username"
 FIELD_SIIGO_ACCESS_KEY = "siigo.access_key"
 FIELD_SIIGO_PARTNER_ID = "siigo.partner_id"
+#: The Siigo token shared by the app's processes (Q2e; see vault/token_store.py).
+FIELD_SIIGO_SHARED_TOKEN = "siigo.shared_token"  # noqa: S105 - vault field name
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (
@@ -255,6 +257,7 @@ class Vault:
     # ------------------------------------------------------------------ Siigo credentials
     def save_siigo_credentials(self, credentials: SiigoCredentials) -> None:
         with self._lock:
+            self.delete_secret(FIELD_SIIGO_SHARED_TOKEN)
             self.set_secret(FIELD_SIIGO_USERNAME, credentials.username)
             self.set_secret(FIELD_SIIGO_ACCESS_KEY, credentials.access_key)
             self.set_secret(FIELD_SIIGO_PARTNER_ID, credentials.partner_id)
@@ -269,5 +272,10 @@ class Vault:
         return SiigoCredentials(username, access_key, partner_id)
 
     def clear_siigo_credentials(self) -> None:
-        for name in (FIELD_SIIGO_USERNAME, FIELD_SIIGO_ACCESS_KEY, FIELD_SIIGO_PARTNER_ID):
+        for name in (
+            FIELD_SIIGO_USERNAME,
+            FIELD_SIIGO_ACCESS_KEY,
+            FIELD_SIIGO_PARTNER_ID,
+            FIELD_SIIGO_SHARED_TOKEN,
+        ):
             self.delete_secret(name)
