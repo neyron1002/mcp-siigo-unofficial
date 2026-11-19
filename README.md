@@ -26,14 +26,15 @@ A single downloadable file per operating system (Windows 10/11 x64, macOS 13+ on
 - 9 write tools behind a **"Write actions" switch**, with a warning dialog, a red tray badge while enabled, and your approval of every write, in the mode you choose: the app's own approval window (default), a notification that opens it, or the AI app's question. Optional "approve similar writes for 10 minutes", and a guarded automatic approval for 1 hour or the day. See [Write actions](docs/usage.md#write-actions).
 - Siigo credentials stored in an encrypted local vault (AES-256-GCM, with the master key in the operating-system keychain). Only you type them, in the Settings dialog.
 - Signed updates (SHA-256 checksums signed with Ed25519) that ask before installing, run a self-test, and roll back if it fails.
-- Start at login, English and Spanish interface, and "Copy client setup" for Claude Code, Claude Desktop, Codex, GitHub Copilot in VS Code, and Gemini CLI.
+- **One-click connection** to Claude Code, Claude Desktop, Codex, Gemini CLI, and GitHub Copilot in VS Code: the app finds them and adds the Siigo tools for every project and session of your user (stdio by default, HTTP as an option), with backups, a conflict check, Disconnect, and automatic repair if the app moves. See [Client setup](docs/clients.md).
+- Start at login, English and Spanish interface, and "Copy client setup" for manual setup.
 
 ## Documentation
 
 | Guide | Contents |
 |---|---|
 | [Install](docs/install.md) | Download, first run on each system, Siigo API credentials, verify a download, uninstall |
-| [Client setup](docs/clients.md) | Claude Code, Claude Desktop, Codex, GitHub Copilot in VS Code, Gemini CLI |
+| [Client setup](docs/clients.md) | One-click connection, stdio or HTTP, manual setup for Claude Code, Claude Desktop, Codex, GitHub Copilot in VS Code, Gemini CLI |
 | [Using the app](docs/usage.md) | Tray menu, write actions, updates, where your data is, command line |
 | [MCP tools](docs/tools.md) | Every tool and the Siigo API endpoint it calls |
 | [Troubleshooting](docs/troubleshooting.md) | Tray icon, blocked app, port in use, 401 errors, vault, updates |
@@ -49,8 +50,12 @@ A single downloadable file per operating system (Windows 10/11 x64, macOS 13+ on
 | 4 Single-file build | Launcher with embedded payload, signed checksums, release workflow, size budget |
 | 5 Updater | Signed in-place update with self-test and rollback |
 | 6 Docs + v0.1.0 | Client setup guides, troubleshooting, first stable release |
+| Write approval (v0.1.1, v0.1.2) | The Siigo approval window, approve similar writes for 10 minutes, approval modes, guarded automatic approval |
+| 7 One-click installer | Find AI apps, connect (stdio or HTTP), disconnect, repair, shared Siigo token |
+| 8 Connect window | Connect AI apps window, tray AI apps menu, new-app notifications, Restart Claude Desktop |
+| 9 Docs + v0.2.0 | One-click guides and the v0.2.0 release |
 
-All phases are done. Each phase, its checks, and every deviation from the plan are recorded in the [execution log](prompts/2026.11.18_unattended_execution/2026.11.18_execution_log.md).
+Each phase, its checks, and every deviation from the plan are recorded in the execution logs: [phases 0–6](prompts/2026.11.18_unattended_execution/2026.11.18_execution_log.md), [write approval](prompts/2026.11.19_write_approval_bug/2026.11.19_execution_log.md), and [one-click connection](prompts/2026.11.19_one_click_client_install/2026.11.19_execution_log.md).
 
 ## Development
 
@@ -104,7 +109,8 @@ Un solo archivo descargable por sistema operativo (Windows, macOS y Ubuntu) que 
 - 9 herramientas de escritura detrás del interruptor **"Acciones de escritura"**: apagado por defecto, con advertencia, icono rojo mientras está activo, y su aprobación para cada escritura en la ventana de aprobación de la aplicación.
 - Sus credenciales de Siigo se guardan cifradas en su equipo, y solo usted las escribe en la ventana de Configuración.
 - Actualizaciones firmadas que preguntan antes de instalar, ejecutan una autoprueba y se revierten si falla.
-- Inicio al encender el equipo, interfaz en español e inglés, y "Copiar configuración del cliente" para Claude Code, Claude Desktop, Codex, GitHub Copilot en VS Code y Gemini CLI ([guía de clientes](docs/clients.md#español)).
+- **Conexión con un clic** a Claude Code, Claude Desktop, Codex, Gemini CLI y GitHub Copilot en VS Code: la aplicación las encuentra y agrega las herramientas de Siigo para todos los proyectos y sesiones de su usuario, con copia de respaldo, sin tocar sus otros servidores, y con opción de desconectar ([guía de clientes](docs/clients.md#español)).
+- Inicio al encender el equipo, interfaz en español e inglés, y "Copiar configuración del cliente" para la configuración manual.
 
 La documentación detallada está en inglés: [instalación](docs/install.md), [clientes](docs/clients.md), [uso](docs/usage.md), [herramientas](docs/tools.md) y [solución de problemas](docs/troubleshooting.md).
 

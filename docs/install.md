@@ -35,7 +35,7 @@ The files are not signed with a paid code-signing certificate, so each system wa
 1. Find your Siigo API credentials: in Siigo Nube, open **Alianzas → Mi Credencial API**. You need the **API username** (an email) and the **access key**.
 2. The Settings window opens on the first run. Type the API username and the access key, click **Test connection**, then **Save**. Only you type them; they are stored encrypted on your computer (see [Where your data is](usage.md#where-your-data-is)).
 3. **Partner-Id** is a name that identifies this app to Siigo. Keep the default `MCPSiigoUnofficial` unless Siigo gives you another one (3 to 100 letters and numbers).
-4. Connect your AI client: [Client setup](clients.md).
+4. Connect your AI apps: the **Connect your AI apps** window opens when an AI app (Claude Code, Claude Desktop, Codex, Gemini CLI, or VS Code) is installed. Click **Connect**. You can open it later from the tray menu: **AI apps ▸ Connect AI apps…**. See [Client setup](clients.md).
 
 Start at login is turned on after the first run. You can turn it off in the tray menu.
 
@@ -49,9 +49,11 @@ You can check that a file is the one published by the author:
 
 ## Uninstall
 
+Uninstalling with `--uninstall` first removes the Siigo entries this app added to your AI apps.
+
 - **Windows:** quit the app from the tray menu, then run `%LOCALAPPDATA%\MCPSiigoUnofficial\launcher.exe --uninstall`. Add `--purge-data` to also delete your encrypted vault (credentials and settings) and its keychain key.
 - **Ubuntu:** quit the app, then run `~/.local/share/mcp-siigo-unofficial/launcher --uninstall` (add `--purge-data` to delete your data too).
-- **macOS:** quit the app. To delete your data first, run `"/Applications/MCP Siigo Unofficial.app/Contents/MacOS/MCPSiigoUnofficial" --purge-data`. Then drag the app from Applications to the Trash, and delete `~/Library/LaunchAgents/com.neyron1002.mcp-siigo-unofficial.plist` and the folder `~/Library/Application Support/MCPSiigoUnofficial`.
+- **macOS:** quit the app. To remove the Siigo entries from your AI apps, first run `"/Applications/MCP Siigo Unofficial.app/Contents/MacOS/MCPSiigoUnofficial" --disconnect-clients`. To delete your data, run `"/Applications/MCP Siigo Unofficial.app/Contents/MacOS/MCPSiigoUnofficial" --purge-data`. Then drag the app from Applications to the Trash, and delete `~/Library/LaunchAgents/com.neyron1002.mcp-siigo-unofficial.plist` and the folder `~/Library/Application Support/MCPSiigoUnofficial`.
 
 ---
 
@@ -60,4 +62,4 @@ You can check that a file is the one published by the author:
 1. Descargue el archivo de su sistema desde la [página de versiones](https://github.com/neyron1002/mcp-siigo-unofficial/releases).
 2. **Windows:** haga doble clic; si SmartScreen lo detiene, haga clic en **Más información → Ejecutar de todas formas**. **macOS:** abra el DMG, arrastre la aplicación a **Aplicaciones** y ábrala desde allí; si macOS la bloquea, use **Configuración del Sistema → Privacidad y seguridad → Abrir de todas formas**. **Ubuntu:** en **Propiedades**, active **Permitir ejecutar como programa** y haga doble clic.
 3. En Siigo Nube, abra **Alianzas → Mi Credencial API** y copie el **usuario de la API** y la **access key**. Escríbalos en la ventana de Configuración, pruebe la conexión y guarde. Solo usted los escribe; se guardan cifrados en su equipo.
-4. Conecte su cliente de IA con **Copiar configuración del cliente** en el menú del icono ([guía en inglés](clients.md)).
+4. Conecte sus apps de IA: la ventana **Conectar sus apps de IA** se abre sola si tiene instalada una app de IA (Claude Code, Claude Desktop, Codex, Gemini CLI o VS Code). Haga clic en **Conectar**. Después puede abrirla desde el menú del icono: **Apps de IA ▸ Conectar apps de IA…** ([guía de clientes](clients.md#español)).

@@ -8,12 +8,23 @@
 | Write actions: ON/OFF | Turns write actions on (after a warning) or off. See [Write actions](#write-actions). |
 | Similar writes approved … / Stop approving similar writes now | Shown only while an "approve similar writes for 10 minutes" grant is active. See [Approval window](#approval-window). |
 | Approve all writes automatically ▸ For 1 hour… / Until the end of today… | Shown while write actions are on. Dangerous: see [Automatic approval](#automatic-approval). While it is on, the menu shows the time and writes left and **Stop automatic approval now**. |
-| Copy client setup | Copies a ready-made setup for each AI client. See [Client setup](clients.md). |
+| AI apps ▸ | Each AI app found and its state (Connected · stdio or HTTP, Found, …), **Connect AI apps…**, and **Disconnect all AI apps**. See [Connect AI apps](#connect-ai-apps). |
+| Copy client setup | Copies a ready-made setup for each AI client, for manual setup. See [Client setup](clients.md#manual-setup). |
 | Settings… | Siigo credentials, connection test, language (English, Spanish, or the system's), local MCP port (used after a restart), the write switch, and **Write approval** (see [Approval modes](#approval-modes)). |
 | Start at login | Starts the app when you log in. On after the first run. |
 | Check for updates | Looks for a newer release. See [Updates](#updates). |
 | About | Author, license, and links. |
 | Quit | Stops the app and its MCP server. |
+
+## Connect AI apps
+
+**AI apps ▸ Connect AI apps…** opens a window with Claude Code, Claude Desktop, Codex, Gemini CLI, and VS Code (GitHub Copilot). Tick the apps and click **Connect**: the Siigo tools are added for every project and new session of your computer user. **Advanced** chooses stdio (recommended) or HTTP for each app; Claude Desktop uses stdio only. Rows that are connected have **Disconnect**, or **Switch to stdio** for an HTTP setup. After connecting Claude Desktop, click **Restart Claude Desktop**.
+
+- The window opens by itself once: on the first start, or the first start after the update from 0.1.x, when an AI app is installed.
+- 30 seconds after the app starts, and every 4 hours, it looks for new AI apps (a notification asks you; nothing is connected until you click) and updates its own entries if the app moved to another folder (a notification tells you).
+- Each settings file is backed up before the first change of the day (`<file>.siigo-backup-<date>`), and only the `siigo` entry changes.
+
+Details and the stdio/HTTP comparison: [Client setup](clients.md).
 
 ## Write actions
 

@@ -8,7 +8,7 @@
 | macOS 13+ (Apple silicon) | `MCPSiigoUnofficial-{version}-macos-arm64.dmg` |
 | Ubuntu 22.04/24.04 (x64) | `mcp-siigo-unofficial-{version}-linux-x64` |
 
-Start with the [install guide](https://github.com/neyron1002/mcp-siigo-unofficial/blob/{tag}/docs/install.md), then [connect your AI client](https://github.com/neyron1002/mcp-siigo-unofficial/blob/{tag}/docs/clients.md). `SHA256SUMS` is signed with Ed25519 (`SHA256SUMS.sig`); the app's updater checks it automatically.
+Start with the [install guide](https://github.com/neyron1002/mcp-siigo-unofficial/blob/{tag}/docs/install.md), then click **Connect** in the app to connect your AI apps (Claude Code, Claude Desktop, Codex, Gemini CLI, VS Code) in one step: see [client setup](https://github.com/neyron1002/mcp-siigo-unofficial/blob/{tag}/docs/clients.md). `SHA256SUMS` is signed with Ed25519 (`SHA256SUMS.sig`); the app's updater checks it automatically.
 
 Write actions create **real** records in Siigo. They are off by default, turn off at every restart, and every write needs your approval. You are responsible for the actions your AI client executes.
 
