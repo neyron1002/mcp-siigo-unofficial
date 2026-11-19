@@ -57,10 +57,25 @@ jobs:
         run: |
           flags=()
           case "${GITHUB_REF_NAME}" in *-*) flags+=(--prerelease) ;; esac
-          cat reports/size-report-*.md > release-notes.md
+          version="${GITHUB_REF_NAME#v}"
+          sed -e "s/{version}/${version}/g" -e "s/{tag}/${GITHUB_REF_NAME}/g" \
+            packaging/release_notes.md > release-notes.md
+          cat reports/size-report-*.md >> release-notes.md
           gh release create "${GITHUB_REF_NAME}" release/* reports/* \
             --title "MCP Siigo Unofficial ${GITHUB_REF_NAME}" \
             --notes-file release-notes.md "${flags[@]}"
+      - name: The release has every file (plan phase 6)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          names=$(gh release view "${GITHUB_REF_NAME}" --json assets -q '.assets[].name')
+          for file in "MCPSiigoUnofficial-${version}-windows-x64.exe" \
+                      "MCPSiigoUnofficial-${version}-macos-arm64.dmg" \
+                      "mcp-siigo-unofficial-${version}-linux-x64" SHA256SUMS SHA256SUMS.sig; do
+            grep -qxF "$file" <<<"$names" || { echo "Missing release file: $file"; exit 1; }
+            echo "ok  $file"
+          done
 
   find-previous:
     needs: publish
