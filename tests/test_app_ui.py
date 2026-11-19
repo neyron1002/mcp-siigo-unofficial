@@ -397,6 +397,16 @@ def test_approval_window_buttons(
     assert answers == [(request.id, decision)]
 
 
+def test_approval_window_seconds_left_never_above_total(qapp: QApplication, tr: Translator) -> None:
+    """(now + t) - now can round above t for a large clock value (Windows CI)."""
+    now = 4090.833771576286  # (now + 120.0) - now == 120.00000000000003
+    assert (now + 120.0) - now > 120.0
+    request = approval_request()
+    window = ApprovalWindow(request, tr, lambda rid, d: None, clock=lambda: now)
+    assert window.seconds_left() == request.timeout_s
+    window.close()
+
+
 def test_approval_window_details_escape_and_close(qapp: QApplication, tr: Translator) -> None:
     answers: list[Decision] = []
     window = ApprovalWindow(approval_request(), tr, lambda rid, d: answers.append(d))
