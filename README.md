@@ -23,7 +23,7 @@ Not affiliated with Siigo S.A.S. Free, provided "as is", without warranty. MIT L
 A single downloadable file per operating system (Windows 10/11 x64, macOS 13+ on Apple silicon, Ubuntu 22.04/24.04 x64). It installs itself into your user folder with no administrator rights, and it runs as a tray app:
 
 - A local MCP server (Streamable HTTP on `127.0.0.1` with a private bearer key, plus a `--stdio` mode) with 45 read tools for Siigo catalogs, customers, products, invoices, credit notes, cash receipts, journals, and reports. See [MCP tools](docs/tools.md).
-- 9 write tools behind a **"Write actions" switch**, with a warning dialog, a red tray badge while enabled, and your approval of every write (MCP elicitation, or a one-time confirmation code). See [Write actions](docs/usage.md#write-actions).
+- 9 write tools behind a **"Write actions" switch**, with a warning dialog, a red tray badge while enabled, and your approval of every write in the app's own approval window (with an optional "approve similar writes for 10 minutes"). See [Write actions](docs/usage.md#write-actions).
 - Siigo credentials stored in an encrypted local vault (AES-256-GCM, with the master key in the operating-system keychain). Only you type them, in the Settings dialog.
 - Signed updates (SHA-256 checksums signed with Ed25519) that ask before installing, run a self-test, and roll back if it fails.
 - Start at login, English and Spanish interface, and "Copy client setup" for Claude Code, Claude Desktop, Codex, GitHub Copilot in VS Code, and Gemini CLI.
@@ -44,7 +44,7 @@ A single downloadable file per operating system (Windows 10/11 x64, macOS 13+ on
 |---|---|
 | 0 Foundation | Dev container, license, README, project tooling, CI on 3 operating systems, reference analysis |
 | 1 Siigo client + vault | Authentication and token renewal, encrypted vault, mock Siigo server |
-| 2 MCP server | HTTP + stdio, tool catalog, write switch gate, elicitation and two-step confirmation |
+| 2 MCP server | HTTP + stdio, tool catalog, write switch gate, write approval (approval window since v0.1.1) |
 | 3 Tray + UI | Tray icon, Settings, About, English/Spanish, start at login, write-enable warning |
 | 4 Single-file build | Launcher with embedded payload, signed checksums, release workflow, size budget |
 | 5 Updater | Signed in-place update with self-test and rollback |
@@ -101,7 +101,7 @@ No está afiliado a Siigo S.A.S. Gratuito, "tal cual", sin garantía. Licencia M
 Un solo archivo descargable por sistema operativo (Windows, macOS y Ubuntu) que se instala en su carpeta de usuario, sin permisos de administrador, y funciona como aplicación en la bandeja del sistema:
 
 - Un servidor MCP local con 45 herramientas de lectura de Siigo (catálogos, clientes, productos, facturas, notas crédito, recibos de caja, comprobantes e informes).
-- 9 herramientas de escritura detrás del interruptor **"Acciones de escritura"**: apagado por defecto, con advertencia, icono rojo mientras está activo, y su aprobación para cada escritura.
+- 9 herramientas de escritura detrás del interruptor **"Acciones de escritura"**: apagado por defecto, con advertencia, icono rojo mientras está activo, y su aprobación para cada escritura en la ventana de aprobación de la aplicación.
 - Sus credenciales de Siigo se guardan cifradas en su equipo, y solo usted las escribe en la ventana de Configuración.
 - Actualizaciones firmadas que preguntan antes de instalar, ejecutan una autoprueba y se revierten si falla.
 - Inicio al encender el equipo, interfaz en español e inglés, y "Copiar configuración del cliente" para Claude Code, Claude Desktop, Codex, GitHub Copilot en VS Code y Gemini CLI ([guía de clientes](docs/clients.md#español)).
