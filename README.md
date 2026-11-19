@@ -1,6 +1,14 @@
 # MCP Siigo Unofficial
 
-> **Download:** [latest release](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest) for Windows, macOS, and Ubuntu. Start with the [install guide](docs/install.md).
+## Download
+
+| System | Download (newest version) |
+|---|---|
+| Windows 10/11 (x64) | [Download for Windows](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest/download/MCPSiigoUnofficial-windows-x64.exe) |
+| macOS 13 or later (Apple silicon: M1 to M4) | [Download for Mac](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest/download/MCPSiigoUnofficial-macos-arm64.dmg) |
+| Ubuntu 22.04/24.04 (x64) | [Download for Ubuntu](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest/download/mcp-siigo-unofficial-linux-x64) |
+
+Then follow the [install guide](docs/install.md). Older versions and checksums are on the [releases page](https://github.com/neyron1002/mcp-siigo-unofficial/releases).
 
 **MCP Siigo Unofficial** connects AI assistants such as Claude, Codex, Copilot, and Gemini to your Siigo accounting data. I built it for a friend's company, and for anyone who needs it: business owners, accountants, and accounting professionals. It is free of charge.
 
@@ -85,7 +93,15 @@ This project is planned and built by AI agents (Claude Code) under the owner's d
 
 ## Español
 
-> **Descarga:** [última versión](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest) para Windows, macOS y Ubuntu. Empiece con la [guía de instalación](docs/install.md#español).
+### Descarga
+
+| Sistema | Descarga (versión más reciente) |
+|---|---|
+| Windows 10/11 (x64) | [Descargar para Windows](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest/download/MCPSiigoUnofficial-windows-x64.exe) |
+| macOS 13 o posterior (Apple silicon: M1 a M4) | [Descargar para Mac](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest/download/MCPSiigoUnofficial-macos-arm64.dmg) |
+| Ubuntu 22.04/24.04 (x64) | [Descargar para Ubuntu](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest/download/mcp-siigo-unofficial-linux-x64) |
+
+Luego siga la [guía de instalación](docs/install.md#español). Las versiones anteriores y las sumas de verificación están en la [página de versiones](https://github.com/neyron1002/mcp-siigo-unofficial/releases).
 
 **MCP Siigo Unofficial** conecta asistentes de IA como Claude, Codex, Copilot y Gemini con los datos contables de Siigo. Lo construí para la empresa de un amigo y para quien lo necesite: empresarios, contadores y profesionales contables. Es gratuito.
 

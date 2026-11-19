@@ -2,11 +2,13 @@
 
 MCP Siigo Unofficial is one file per operating system. It installs into your user folder, with no administrator rights, and runs as a tray app.
 
-| System | File on the [releases page](https://github.com/neyron1002/mcp-siigo-unofficial/releases) |
+| System | Download (newest version) |
 |---|---|
-| Windows 10/11 (x64) | `MCPSiigoUnofficial-<version>-windows-x64.exe` |
-| macOS 13 or later (Apple silicon) | `MCPSiigoUnofficial-<version>-macos-arm64.dmg` |
-| Ubuntu 22.04/24.04 (x64) | `mcp-siigo-unofficial-<version>-linux-x64` |
+| Windows 10/11 (x64) | [MCPSiigoUnofficial-windows-x64.exe](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest/download/MCPSiigoUnofficial-windows-x64.exe) |
+| macOS 13 or later (Apple silicon) | [MCPSiigoUnofficial-macos-arm64.dmg](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest/download/MCPSiigoUnofficial-macos-arm64.dmg) |
+| Ubuntu 22.04/24.04 (x64) | [mcp-siigo-unofficial-linux-x64](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest/download/mcp-siigo-unofficial-linux-x64) |
+
+The [releases page](https://github.com/neyron1002/mcp-siigo-unofficial/releases) has older versions. There, each file also has a copy with the version in its name (for example `MCPSiigoUnofficial-0.2.0-windows-x64.exe`); both are the same file.
 
 The files are not signed with a paid code-signing certificate, so each system warns you the first time. The steps below show how to continue. Each release also has `SHA256SUMS` and its Ed25519 signature `SHA256SUMS.sig`; see [Verify a download](#verify-a-download).
 
@@ -26,7 +28,7 @@ The files are not signed with a paid code-signing certificate, so each system wa
 ## Ubuntu
 
 1. Download the file.
-2. Browsers remove the "executable" permission. Right-click the file, choose **Properties**, and turn on **Executable as Program**. In a terminal, you can run `chmod +x mcp-siigo-unofficial-*-linux-x64` instead.
+2. Browsers remove the "executable" permission. Right-click the file, choose **Properties**, and turn on **Executable as Program**. In a terminal, you can run `chmod +x mcp-siigo-unofficial-*linux-x64` instead.
 3. Double-click the file (or run it in a terminal).
 4. The icon appears in the top bar. On Ubuntu's default desktop this needs the "AppIndicator and KStatusNotifierItem Support" extension, which Ubuntu turns on by default. Without a tray, the Settings window opens instead, and closing it quits the app.
 
@@ -59,7 +61,7 @@ Uninstalling with `--uninstall` first removes the Siigo entries this app added t
 
 ## Español
 
-1. Descargue el archivo de su sistema desde la [página de versiones](https://github.com/neyron1002/mcp-siigo-unofficial/releases).
+1. Descargue el archivo de su sistema: [Windows](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest/download/MCPSiigoUnofficial-windows-x64.exe), [Mac](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest/download/MCPSiigoUnofficial-macos-arm64.dmg) o [Ubuntu](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest/download/mcp-siigo-unofficial-linux-x64). Las versiones anteriores están en la [página de versiones](https://github.com/neyron1002/mcp-siigo-unofficial/releases).
 2. **Windows:** haga doble clic; si SmartScreen lo detiene, haga clic en **Más información → Ejecutar de todas formas**. **macOS:** abra el DMG, arrastre la aplicación a **Aplicaciones** y ábrala desde allí; si macOS la bloquea, use **Configuración del Sistema → Privacidad y seguridad → Abrir de todas formas**. **Ubuntu:** en **Propiedades**, active **Permitir ejecutar como programa** y haga doble clic.
 3. En Siigo Nube, abra **Alianzas → Mi Credencial API** y copie el **usuario de la API** y la **access key**. Escríbalos en la ventana de Configuración, pruebe la conexión y guarde. Solo usted los escribe; se guardan cifrados en su equipo.
 4. Conecte sus apps de IA: la ventana **Conectar sus apps de IA** se abre sola si tiene instalada una app de IA (Claude Code, Claude Desktop, Codex, Gemini CLI o VS Code). Haga clic en **Conectar**. Después puede abrirla desde el menú del icono: **Apps de IA ▸ Conectar apps de IA…** ([guía de clientes](clients.md#español)).
