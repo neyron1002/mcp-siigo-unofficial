@@ -20,13 +20,25 @@ The files are not signed with a paid code-signing certificate. Follow the first-
 
 ## "MCP server stopped: address already in use"
 
-Another program uses port 39217. Open **Settings**, change **Local MCP port** (for example to 39218), save, and restart the app (Quit, then open it again). Then copy the client setup again, because the address changes.
+Another program uses port 39217. Open **Settings**, change **Local MCP port** (for example to 39218), save, and restart the app (Quit, then open it again). AI apps connected with stdio need nothing else. For HTTP setups, open **Connect AI apps…** and connect them again (or copy the client setup again), because the address changes.
 
 ## A client gets 401 Unauthorized
 
-The client sends a wrong or old key. Copy the client setup again from the tray menu and replace the old one.
+The client sends a wrong or old key (HTTP setups only). Open **AI apps ▸ Connect AI apps…** and click **Switch to stdio** for that app, or connect it again with HTTP. For a setup made by hand, copy the client setup again from the tray menu and replace the old one.
 
 If the key leaked, make a new one: quit the app, delete `vault.sqlite3` (and `vault.sqlite3-wal` and `vault.sqlite3-shm`, if present) from the app folder ([Where your data is](usage.md#where-your-data-is)), and start the app. It creates a new key; type your Siigo credentials again and copy the new client setups.
+
+## An AI app doesn't show the Siigo tools after Connect
+
+- Open a **new** session: running sessions don't reload their servers. Claude Desktop must be restarted (**Restart Claude Desktop** in the window, or quit and reopen it).
+- Open **AI apps** in the tray menu and check the app's state:
+  - **Found**: it isn't connected yet. Open **Connect AI apps…** and click **Connect**.
+  - **Connected, needs an update**: the app moved to another folder. Restart the tray app (it updates its own entries), or click **Connect** again.
+  - **Settings file can't be read**: the AI app's settings file isn't valid JSON or TOML. The app never overwrites it. Hover over the state to see the error, fix the file (or restore the AI app's defaults), and try again.
+  - **Another program uses "siigo"**: click **Connect** and choose **Keep both** (this app is added as `siigo-unofficial`) or **Replace**.
+- **Restart Claude Desktop** failed: quit Claude Desktop from its own menu and open it again.
+- An app isn't listed as found: the app looks for each AI app's command (`claude`, `codex`, `gemini`, `code`) and its settings folder. Open the AI app once so it creates its settings, then open **Connect AI apps…** again. You can always use [manual setup](clients.md#manual-setup).
+- To undo everything: **AI apps ▸ Disconnect all AI apps**. Each settings file also has a backup next to it, `<file>.siigo-backup-<date>`.
 
 ## A client does not see the write tools
 
