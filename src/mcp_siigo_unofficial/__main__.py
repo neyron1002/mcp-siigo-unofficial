@@ -7,6 +7,9 @@
   themselves, such as Claude Desktop). Write actions follow the tray app's switch.
 - ``--update-now``: check GitHub for a newer release, download it, verify its
   signature, and start the installer (no tray; used by CI and by scripts).
+- ``--list-clients``, ``--connect-clients``, ``--disconnect-clients``,
+  ``--repair-clients``: connect the Siigo server to AI apps (one-click plan v3);
+  ``--client NAME`` (repeatable), ``--transport stdio|http``, ``--on-conflict``.
 - ``--serve``: headless Streamable HTTP server on 127.0.0.1 (development and CI;
   the tray app in phase 3 runs the same server). Write actions stay off.
 """
@@ -53,6 +56,33 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--target", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--from-version", default=None, help=argparse.SUPPRESS)
     parser.add_argument("--no-start", action="store_true", help=argparse.SUPPRESS)
+    clients = parser.add_argument_group("AI apps (one-click connect)")
+    mode.add_argument(
+        "--list-clients", action="store_true", help="show the AI apps and their state"
+    )
+    mode.add_argument(
+        "--connect-clients", action="store_true", help="add the Siigo server to AI apps"
+    )
+    mode.add_argument(
+        "--disconnect-clients", action="store_true", help="remove the Siigo server from AI apps"
+    )
+    mode.add_argument(
+        "--repair-clients", action="store_true", help="fix our entries after the app moved"
+    )
+    clients.add_argument(
+        "--client",
+        action="append",
+        default=None,
+        metavar="NAME",
+        help="claude-code, claude-desktop, codex, gemini, or vscode (default: all)",
+    )
+    clients.add_argument("--transport", choices=("stdio", "http"), default="stdio")
+    clients.add_argument(
+        "--on-conflict",
+        choices=("ask", "keep-both", "replace"),
+        default="ask",
+        help='what to do when another program already uses the name "siigo"',
+    )
     parser.add_argument("--port", type=int, default=None, help="HTTP port (with --serve)")
     return parser
 
@@ -62,14 +92,16 @@ def _open_runtime(*, follow_vault: bool) -> tuple[Vault, SiigoMCPServer]:
     from mcp_siigo_unofficial.server.app import build_server
     from mcp_siigo_unofficial.server.write_gate import WriteSwitch
     from mcp_siigo_unofficial.siigo import DEFAULT_BASE_URL, SiigoClient
-    from mcp_siigo_unofficial.vault import KeyringKeyStore, Vault
+    from mcp_siigo_unofficial.vault import KeyringKeyStore, Vault, VaultTokenStore
 
     vault = Vault.open(vault_path(), KeyringKeyStore())
     switch = WriteSwitch(vault, follow_vault=follow_vault)
     if not follow_vault:
         switch.reset_at_start()
     base_url = os.environ.get(BASE_URL_ENV) or DEFAULT_BASE_URL
-    siigo = SiigoClient(vault.load_siigo_credentials, base_url=base_url)
+    siigo = SiigoClient(
+        vault.load_siigo_credentials, base_url=base_url, token_store=VaultTokenStore(vault)
+    )
     return vault, build_server(siigo, switch, vault=vault)
 
 
@@ -190,6 +222,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _update_now()
     if args.apply_update:
         return _apply_update(args)
+    for action in ("list", "connect", "disconnect", "repair"):
+        if getattr(args, f"{action}_clients"):
+            from mcp_siigo_unofficial.clients.cli import run as run_clients
+
+            return run_clients(
+                action,
+                clients=args.client,
+                transport=args.transport,
+                on_conflict=args.on_conflict,
+            )
     if args.version:
         sys.stdout.write(f"{APP_NAME} {__version__}\n")
         return 0

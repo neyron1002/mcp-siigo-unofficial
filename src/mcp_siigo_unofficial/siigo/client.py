@@ -3,6 +3,8 @@
 - ``POST /auth`` with the username and access key. The token is cached in memory
   and renewed 5 minutes before it expires (Siigo tokens last 24 hours, plan D7).
 - Every call sends ``Authorization: Bearer <token>`` and ``Partner-Id``.
+- With a token store (stdio processes, plan Q2e), the token is shared through the
+  encrypted vault, so the app's processes log in once instead of once each.
 - On 401 it authenticates again and retries once. On 429 it waits for
   ``Retry-After`` (capped) and retries. Read calls (GET) also retry once on a
   network error or a 502/503/504. Writes are never retried after a server error,
@@ -31,6 +33,7 @@ from mcp_siigo_unofficial.siigo.errors import (
     SiigoError,
     SiigoNotConfiguredError,
 )
+from mcp_siigo_unofficial.siigo.token import SharedToken, TokenStore
 
 log = logging.getLogger(__name__)
 
@@ -104,8 +107,12 @@ class SiigoClient:
         transport: httpx2.AsyncBaseTransport | None = None,
         clock: Callable[[], float] = time.monotonic,
         sleep: Sleep = asyncio.sleep,
+        token_store: TokenStore | None = None,
+        wall_clock: Callable[[], float] = time.time,
     ) -> None:
         self._credentials = credentials
+        self._token_store = token_store
+        self._wall_clock = wall_clock
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self._clock = clock
@@ -162,6 +169,10 @@ class SiigoClient:
 
     def invalidate_token(self) -> None:
         """Forget the cached token (for example, after the credentials change)."""
+        if self._token_store is not None and self._token is not None:
+            shared = self._load_shared()
+            if shared is not None and shared.token == self._token:
+                self._clear_shared()
         self._token = None
         self._token_expires_at = None
         self._token_owner = None
@@ -178,6 +189,8 @@ class SiigoClient:
         async with self._auth_lock:
             credentials = self._require_credentials()
             if not force and self._token_is_fresh(credentials):
+                return
+            if not force and self._adopt_shared(credentials):
                 return
             log.info("Authenticating with Siigo (POST /auth)")
             try:
@@ -223,6 +236,47 @@ class SiigoClient:
             self._token_expires_at = self._clock() + lifetime
             self._token_owner = _fingerprint(credentials)
             log.info("Siigo token received; it expires in %.0f s", lifetime)
+            self._save_shared(SharedToken(token, self._wall_clock() + lifetime, self._token_owner))
+
+    # ------------------------------------------------------------------ shared token
+    def _load_shared(self) -> SharedToken | None:
+        if self._token_store is None:
+            return None
+        try:
+            return self._token_store.load()
+        except Exception:
+            log.warning("The shared Siigo token could not be read")
+            return None
+
+    def _save_shared(self, token: SharedToken) -> None:
+        if self._token_store is None:
+            return
+        try:
+            self._token_store.save(token)
+        except Exception:
+            log.warning("The shared Siigo token could not be saved")
+
+    def _clear_shared(self) -> None:
+        if self._token_store is None:
+            return
+        try:
+            self._token_store.clear()
+        except Exception:
+            log.warning("The shared Siigo token could not be cleared")
+
+    def _adopt_shared(self, credentials: SiigoCredentials) -> bool:
+        """Use a fresh token saved by another process for the same credentials."""
+        shared = self._load_shared()
+        if shared is None or shared.owner != _fingerprint(credentials):
+            return False
+        seconds_left = shared.expires_at - self._wall_clock()
+        if seconds_left <= TOKEN_RENEW_MARGIN_S:
+            return False
+        self._token = shared.token
+        self._token_expires_at = self._clock() + seconds_left
+        self._token_owner = shared.owner
+        log.info("Using the shared Siigo token; it expires in %.0f s", seconds_left)
+        return True
 
     # ------------------------------------------------------------------ requests
     async def request(

@@ -18,8 +18,10 @@ Modes:
   and only then make it current and start it. If the self-test fails, delete the new
   version and keep the old one (rollback);
 - ``--update-now``: passed to the app (check, download, verify, and update; for CI);
-- ``--uninstall [--purge-data]``: remove start at login and the installed versions
-  (and, with ``--purge-data``, the vault and its keychain key).
+- ``--uninstall [--purge-data]``: disconnect AI apps, remove start at login and the
+  installed versions (and, with ``--purge-data``, the vault and its keychain key).
+- ``--list-clients``, ``--connect-clients``, ``--disconnect-clients``,
+  ``--repair-clients``: passed to the installed app (one-click connect).
 
 Only the standard library and ``platformdirs`` are used here, so the small
 installed launcher starts quickly. macOS ships a ``.app`` in a DMG instead
@@ -50,6 +52,8 @@ EXE_SUFFIX = ".exe" if _WINDOWS else ""
 CORE_NAME = f"launcher-core{EXE_SUFFIX}"
 INSTALLED_LAUNCHER_NAME = f"launcher{EXE_SUFFIX}"
 UPDATE_RESULT_NAME = "update-result.json"
+#: App options that the launcher passes through (one-click connect, plan v3).
+CLIENT_FLAGS = ("--list-clients", "--connect-clients", "--disconnect-clients", "--repair-clients")
 UPDATE_LOG_NAME = "update.log"
 SELFTEST_TIMEOUT = 300.0
 
@@ -362,6 +366,11 @@ def uninstall(layout: Layout, *, purge_data: bool) -> int:
     from mcp_siigo_unofficial.autostart import for_platform
 
     version = layout.current_version()
+    if version and layout.is_installed(version):
+        # Plan Q13: remove our entries from AI apps, so they don't try to start a
+        # launcher that is gone. Only our entries change; backups are kept.
+        with contextlib.suppress(OSError, LauncherError):
+            run_app(layout, ["--disconnect-clients"], wait=True)
     if purge_data and version and layout.is_installed(version):
         run_app(layout, ["--purge-data"], wait=True)
     for_platform().disable()
@@ -433,6 +442,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_app(layout, args, wait=True)
         if "--update-now" in args:
             return run_app(layout, ["--update-now"], wait=True)
+        if any(flag in args for flag in CLIENT_FLAGS):
+            return run_app(layout, args, wait=True)
         return run_app(layout, ["--run"], wait=False)
     except (LauncherError, OSError, ValueError, KeyError) as exc:
         _report(f"MCP Siigo Unofficial: {exc}")
