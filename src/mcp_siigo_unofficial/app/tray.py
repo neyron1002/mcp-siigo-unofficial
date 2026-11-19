@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import threading
 import time
@@ -30,6 +31,11 @@ from mcp_siigo_unofficial.server.approval import (
 )
 
 NOTIFICATION_OPENS_WINDOW_S = 15.0  # W3
+
+
+def _minutes_left(seconds: float) -> int:
+    """Whole minutes, rounded up: 600 s is "10 min", 599 s is "10 min", 1 s is "1 min"."""
+    return max(1, math.ceil(seconds / 60))
 
 
 class _Bridge(QObject):
@@ -176,10 +182,10 @@ class TrayController(QObject):
         auto = approvals.automatic()
         if grants:
             first = grants[0]
-            minutes = int(approvals.seconds_left_until(first.expires_at) // 60) + 1
+            minutes = _minutes_left(approvals.seconds_left_until(first.expires_at))
             self.grants_action.setText(tr("tray.grants", title=first.title, minutes=minutes))
         if auto is not None:
-            minutes = int(approvals.seconds_left_until(auto.expires_at) // 60) + 1
+            minutes = _minutes_left(approvals.seconds_left_until(auto.expires_at))
             self.auto_status_action.setText(
                 tr("tray.auto.active", minutes=minutes, writes=auto.writes_left)
             )

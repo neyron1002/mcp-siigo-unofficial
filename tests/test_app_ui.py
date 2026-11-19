@@ -476,6 +476,17 @@ def test_tray_shows_approval_windows_and_grants(
     assert tray.approval_windows == {}
 
 
+def test_minutes_left_rounds_up() -> None:
+    assert [tray_module._minutes_left(s) for s in (600, 599.5, 540.1, 60, 1, 0)] == [
+        10,
+        10,
+        10,
+        1,
+        1,
+        1,
+    ]
+
+
 def test_automatic_dialog_needs_the_exact_text(qapp: QApplication, tr: Translator) -> None:
     dialog = dialogs_module.AutomaticApprovalDialog(tr, AutomaticSpan.HOUR)
     assert not dialog.enable_button.isEnabled()
