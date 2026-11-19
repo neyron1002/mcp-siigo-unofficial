@@ -1,6 +1,6 @@
 # MCP Siigo Unofficial
 
-> **Status: in development.** There is no release yet. Phases 0–4 (foundation, Siigo client and vault, MCP server, tray app, single-file build) are done; phase 5 (updater) is next.
+> **Download:** [latest release](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest) for Windows, macOS, and Ubuntu. Start with the [install guide](docs/install.md).
 
 **MCP Siigo Unofficial** connects AI assistants such as Claude, Codex, Copilot, and Gemini to your Siigo accounting data. I built it for a friend's company, and for anyone who needs it: business owners, accountants, and accounting professionals. It is free of charge.
 
@@ -18,15 +18,25 @@ Not affiliated with Siigo S.A.S. Free, provided "as is", without warranty. MIT L
 - Write actions (creating customers, invoices, and other records) create **real** records in Siigo, and invoices are sent to the DIAN (Dirección de Impuestos y Aduanas Nacionales, Colombia's tax authority). They are **off by default**, they turn off again every time the app restarts, and every write needs your explicit approval.
 - You are fully responsible for every action your AI client executes through this MCP server. The author is not responsible for AI decisions or executions.
 
-## What it will be
+## What it does
 
-A single downloadable file per operating system (Windows 10/11 x64, macOS 13+ arm64, Ubuntu 22.04/24.04 x64). It installs itself into your user folder with no administrator rights, and it runs as a tray app:
+A single downloadable file per operating system (Windows 10/11 x64, macOS 13+ on Apple silicon, Ubuntu 22.04/24.04 x64). It installs itself into your user folder with no administrator rights, and it runs as a tray app:
 
-- A local MCP server (Streamable HTTP on `127.0.0.1` with a bearer key, plus a `--stdio` mode) with read tools for Siigo catalogs, customers, products, invoices, credit notes, cash receipts, and journals.
-- Write tools behind a **"Write actions" switch**, with a warning dialog, a red tray badge while enabled, and per-write user approval (MCP elicitation, or a one-time confirmation code).
+- A local MCP server (Streamable HTTP on `127.0.0.1` with a private bearer key, plus a `--stdio` mode) with 45 read tools for Siigo catalogs, customers, products, invoices, credit notes, cash receipts, journals, and reports. See [MCP tools](docs/tools.md).
+- 9 write tools behind a **"Write actions" switch**, with a warning dialog, a red tray badge while enabled, and your approval of every write (MCP elicitation, or a one-time confirmation code). See [Write actions](docs/usage.md#write-actions).
 - Siigo credentials stored in an encrypted local vault (AES-256-GCM, with the master key in the operating-system keychain). Only you type them, in the Settings dialog.
-- Signed automatic updates (SHA-256 checksums signed with Ed25519) that ask before installing.
+- Signed updates (SHA-256 checksums signed with Ed25519) that ask before installing, run a self-test, and roll back if it fails.
 - Start at login, English and Spanish interface, and "Copy client setup" for Claude Code, Claude Desktop, Codex, GitHub Copilot in VS Code, and Gemini CLI.
+
+## Documentation
+
+| Guide | Contents |
+|---|---|
+| [Install](docs/install.md) | Download, first run on each system, Siigo API credentials, verify a download, uninstall |
+| [Client setup](docs/clients.md) | Claude Code, Claude Desktop, Codex, GitHub Copilot in VS Code, Gemini CLI |
+| [Using the app](docs/usage.md) | Tray menu, write actions, updates, where your data is, command line |
+| [MCP tools](docs/tools.md) | Every tool and the Siigo API endpoint it calls |
+| [Troubleshooting](docs/troubleshooting.md) | Tray icon, blocked app, port in use, 401 errors, vault, updates |
 
 ## Roadmap
 
@@ -37,8 +47,10 @@ A single downloadable file per operating system (Windows 10/11 x64, macOS 13+ ar
 | 2 MCP server | HTTP + stdio, tool catalog, write switch gate, elicitation and two-step confirmation |
 | 3 Tray + UI | Tray icon, Settings, About, English/Spanish, start at login, write-enable warning |
 | 4 Single-file build | Launcher with embedded payload, signed checksums, release workflow, size budget |
-| 5 Updater | In-place update with rollback |
+| 5 Updater | Signed in-place update with self-test and rollback |
 | 6 Docs + v0.1.0 | Client setup guides, troubleshooting, first stable release |
+
+All phases are done. Each phase, its checks, and every deviation from the plan are recorded in the [execution log](prompts/2026.11.18_unattended_execution/2026.11.18_execution_log.md).
 
 ## Development
 
@@ -67,7 +79,7 @@ This project is planned and built by AI agents (Claude Code) under the owner's d
 
 ## Español
 
-> **Estado: en desarrollo.** Todavía no hay una versión publicada.
+> **Descarga:** [última versión](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest) para Windows, macOS y Ubuntu. Empiece con la [guía de instalación](docs/install.md#español).
 
 **MCP Siigo Unofficial** conecta asistentes de IA como Claude, Codex, Copilot y Gemini con los datos contables de Siigo. Lo construí para la empresa de un amigo y para quien lo necesite: empresarios, contadores y profesionales contables. Es gratuito.
 
@@ -84,9 +96,17 @@ No está afiliado a Siigo S.A.S. Gratuito, "tal cual", sin garantía. Licencia M
 - Las acciones de escritura (crear clientes, facturas y otros registros) crean registros **reales** en Siigo, y las facturas se envían a la DIAN. Están **apagadas por defecto**, se apagan de nuevo cada vez que la aplicación se reinicia, y cada escritura necesita su aprobación explícita.
 - Usted es el único responsable de cada acción que su cliente de IA ejecute a través de este servidor MCP.
 
-### Qué será
+### Qué hace
 
-Un solo archivo descargable por sistema operativo (Windows, macOS y Ubuntu) que se instala en su carpeta de usuario, sin permisos de administrador, y funciona como aplicación en la bandeja del sistema. Sus credenciales de Siigo se guardan cifradas en su equipo, y solo usted las escribe en la ventana de Configuración.
+Un solo archivo descargable por sistema operativo (Windows, macOS y Ubuntu) que se instala en su carpeta de usuario, sin permisos de administrador, y funciona como aplicación en la bandeja del sistema:
+
+- Un servidor MCP local con 45 herramientas de lectura de Siigo (catálogos, clientes, productos, facturas, notas crédito, recibos de caja, comprobantes e informes).
+- 9 herramientas de escritura detrás del interruptor **"Acciones de escritura"**: apagado por defecto, con advertencia, icono rojo mientras está activo, y su aprobación para cada escritura.
+- Sus credenciales de Siigo se guardan cifradas en su equipo, y solo usted las escribe en la ventana de Configuración.
+- Actualizaciones firmadas que preguntan antes de instalar, ejecutan una autoprueba y se revierten si falla.
+- Inicio al encender el equipo, interfaz en español e inglés, y "Copiar configuración del cliente" para Claude Code, Claude Desktop, Codex, GitHub Copilot en VS Code y Gemini CLI ([guía de clientes](docs/clients.md#español)).
+
+La documentación detallada está en inglés: [instalación](docs/install.md), [clientes](docs/clients.md), [uso](docs/usage.md), [herramientas](docs/tools.md) y [solución de problemas](docs/troubleshooting.md).
 
 ### Cómo se construye
 
