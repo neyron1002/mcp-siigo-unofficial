@@ -1,6 +1,7 @@
 """Tray and window icons, drawn with QPainter at run time.
 
-No image files and no image-format plugins are needed (plan D20). The write-mode
+The icon is a white cloud with an arch bridge made of the letters "ii". No image
+files and no image-format plugins are needed (plan D20). The write-mode
 icon adds a red warning badge, and automatic approval turns the whole icon red
 (plan section 5.1).
 """
@@ -28,17 +29,45 @@ def _paint(size: int, write_mode: bool, automatic: bool = False) -> QPixmap:
     painter.setBrush(QBrush(WARNING if automatic else BRAND))
     painter.drawRoundedRect(QRectF(0.04 * s, 0.04 * s, 0.92 * s, 0.92 * s), 0.22 * s, 0.22 * s)
 
-    # A bridge: two pillars and an arch (the MCP is a bridge to the Siigo API).
-    pen = QPen(QColor("white"), max(1.5, 0.09 * s))
+    # A white cloud with an arch bridge inside it. The two letters "ii" are the
+    # bridge: their stems hold the road and their dots sit above it. The bridge
+    # is cut out in the background color (the MCP is a bridge to Siigo's cloud).
+    def p(x: float, y: float) -> QPointF:
+        return QPointF(x * s / 100, y * s / 100)
+
+    cloud = QPainterPath(p(26, 79))
+    cloud.lineTo(p(76, 79))
+    for control, end in (
+        ((92, 79), (92, 63)),
+        ((92, 48), (78, 46)),
+        ((76, 21), (55, 21)),
+        ((42, 21), (36, 32)),
+        ((30, 28), (24, 31)),
+        ((14, 35), (14, 46)),
+        ((6, 50), (6, 63)),
+        ((6, 79), (26, 79)),
+    ):
+        cloud.quadTo(p(*control), p(*end))
+    cloud.closeSubpath()
+    painter.setBrush(QBrush(QColor("white")))
+    painter.drawPath(cloud)
+
+    background = WARNING if automatic else BRAND
+    pen = QPen(background, max(1.0, 0.06 * s))
     pen.setCapStyle(Qt.PenCapStyle.RoundCap)
     painter.setPen(pen)
     painter.setBrush(Qt.BrushStyle.NoBrush)
-    arch = QPainterPath(QPointF(0.2 * s, 0.62 * s))
-    arch.quadTo(QPointF(0.5 * s, 0.12 * s), QPointF(0.8 * s, 0.62 * s))
+    painter.drawLine(p(18, 57), p(82, 57))  # the road
+    painter.drawLine(p(38, 57), p(38, 72))  # the two "i" stems
+    painter.drawLine(p(62, 57), p(62, 72))
+    arch = QPainterPath(p(38, 72))
+    arch.quadTo(p(50, 60), p(62, 72))
     painter.drawPath(arch)
-    painter.drawLine(QPointF(0.14 * s, 0.62 * s), QPointF(0.86 * s, 0.62 * s))
-    painter.drawLine(QPointF(0.32 * s, 0.62 * s), QPointF(0.32 * s, 0.82 * s))
-    painter.drawLine(QPointF(0.68 * s, 0.62 * s), QPointF(0.68 * s, 0.82 * s))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(background))
+    dot = max(0.8, 0.042 * s)
+    painter.drawEllipse(p(38, 46), dot, dot)  # the two "i" dots
+    painter.drawEllipse(p(62, 46), dot, dot)
 
     if write_mode and not automatic:
         # Red badge with a white exclamation mark, bottom right.

@@ -1,8 +1,9 @@
 """Print ``from_tag=<tag>`` and ``expect=<version>`` for the update test (GitHub output).
 
 Reads the GitHub releases JSON and picks the newest published release older than
-the given tag that would be offered the update: stable builds only see stable
-releases, so a pre-release tag starts from the newest older **pre-release**.
+the given tag that would be offered the update. A pre-release tag starts from the
+newest older **pre-release**, and a stable tag from the newest older **stable**
+release: stable builds only see stable releases, and that is what users have.
 Prints ``from_tag=`` (empty) when there is none.
 
 Usage::
@@ -30,8 +31,8 @@ def previous_tag(releases: list[dict[str, object]], tag: str) -> str | None:
         name = str(item.get("tag_name", ""))
         if item.get("draft"):
             continue
-        if prerelease and "-" not in name:
-            continue  # a stable build is never offered a pre-release
+        if prerelease != ("-" in name):
+            continue  # pre-release tags test from pre-releases, stable from stable
         try:
             key = version_key(name)
         except ValueError:
