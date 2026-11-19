@@ -54,7 +54,8 @@ class ApprovalWindow(QDialog):
         self._on_answer = on_answer
         self._clock = clock
         left = request.timeout_s if seconds_left is None else seconds_left
-        self._deadline = clock() + max(0.0, left)
+        self._total = max(0.0, left)
+        self._deadline = clock() + self._total
         self.decision: Decision | None = None
         self._silent = False
 
@@ -134,7 +135,9 @@ class ApprovalWindow(QDialog):
         return "\n".join(lines)
 
     def seconds_left(self) -> float:
-        return max(0.0, self._deadline - self._clock())
+        # Capped at the total: with a large clock value, (now + t) - now can be a
+        # rounding error above t (seen on Windows CI).
+        return min(self._total, max(0.0, self._deadline - self._clock()))
 
     def _tick(self) -> None:
         left = self.seconds_left()
