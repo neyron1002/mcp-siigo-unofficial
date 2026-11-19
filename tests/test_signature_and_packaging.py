@@ -142,3 +142,8 @@ def test_previous_release_for_the_update_test() -> None:
     assert module.previous_tag(releases, "v0.1.0-rc.2") == "v0.1.0-rc.1"
     assert module.previous_tag(releases, "v0.1.0") == "v0.1.0-rc.2"
     assert module.previous_tag(releases, "v0.1.0-rc.1") is None
+    # A pre-release after a stable release starts from the newest older pre-release.
+    later = [*releases, {"tag_name": "v0.1.0"}, {"tag_name": "v0.1.1-rc.1"}]
+    assert module.previous_tag(later, "v0.1.1-rc.1") == "v0.1.0-rc.2"
+    assert module.previous_tag(later, "v0.1.2-rc.1") == "v0.1.1-rc.1"
+    assert module.previous_tag(later, "v0.2.0") == "v0.1.1-rc.1"

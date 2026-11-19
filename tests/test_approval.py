@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -12,12 +13,17 @@ from conftest import FakeClock
 from mcp_siigo_unofficial.app.runtime import AppRuntime
 from mcp_siigo_unofficial.server.approval import (
     APPROVAL_TIMEOUT_S,
+    AUTOMATIC_CONFIRM_TEXT,
+    AUTOMATIC_MAX_WRITES,
     SIMILAR_GRANT_S,
     ApprovalBroker,
+    ApprovalMode,
     ApprovalRequest,
+    AutomaticSpan,
     Decision,
     Outcome,
     RemoteApprover,
+    automatic_seconds,
     summarize,
 )
 from mcp_siigo_unofficial.server.transport import HOST, tray_approver
@@ -214,3 +220,102 @@ def test_grants_end_when_write_actions_turn_off(tmp_path: Path) -> None:
         assert rt.approvals.grants() == []
     finally:
         rt.shutdown()
+
+
+# ---------------------------------------------------------------------- v0.1.2: modes
+def test_mode_parse_defaults_to_the_window() -> None:
+    assert ApprovalMode.parse("ai_app") is ApprovalMode.AI_APP
+    assert ApprovalMode.parse(None) is ApprovalMode.SIIGO_WINDOW
+    assert ApprovalMode.parse("anything") is ApprovalMode.SIIGO_WINDOW
+
+
+def test_automatic_spans() -> None:
+    assert automatic_seconds(AutomaticSpan.HOUR) == 3600
+    evening = dt.datetime(2026, 11, 19, 22, 30, tzinfo=dt.UTC)
+    assert automatic_seconds(AutomaticSpan.TODAY, evening) == 90 * 60
+    almost = dt.datetime(2026, 11, 19, 23, 59, 50, tzinfo=dt.UTC)
+    assert automatic_seconds(AutomaticSpan.TODAY, almost) == 60  # at least a minute
+
+
+async def test_automatic_needs_the_exact_text() -> None:
+    broker = ApprovalBroker()
+    for wrong in ("", "approve all", "APPROVE  ALL", "APROBAR TODO"):
+        with pytest.raises(ValueError, match="APPROVE ALL"):
+            broker.start_automatic(AutomaticSpan.HOUR, confirm_text=wrong)
+    assert broker.automatic() is None
+
+
+async def test_automatic_approval_limits_and_log(clock: FakeClock) -> None:
+    broker = ApprovalBroker(clock=clock)
+    events: list[tuple[str, dict[str, object]]] = []
+    broker.on_event = lambda kind, detail: events.append((kind, detail))
+    shown = answer_with(broker, Decision.REJECT)
+    broker.start_automatic(AutomaticSpan.HOUR, confirm_text=AUTOMATIC_CONFIRM_TEXT)
+    for _ in range(AUTOMATIC_MAX_WRITES):
+        assert await broker.request(make_request(tool="any", connection="any")) is (
+            Outcome.AUTOMATIC
+        )
+    assert broker.automatic() is None  # the 100-write limit
+    assert await broker.request(make_request()) is Outcome.REJECTED
+    assert len(shown) == 1
+    broker.start_automatic(AutomaticSpan.HOUR, confirm_text=AUTOMATIC_CONFIRM_TEXT)
+    clock.now += 3601  # the time limit
+    assert broker.preapproved(make_request()) is None
+    broker.start_automatic(AutomaticSpan.TODAY, confirm_text=AUTOMATIC_CONFIRM_TEXT)
+    broker.stop_automatic()
+    assert [(k, d.get("reason")) for k, d in events] == [
+        ("write_approval.automatic_on", None),
+        ("write_approval.automatic_off", "write_limit"),
+        ("write_approval.automatic_on", None),
+        ("write_approval.automatic_off", "time_limit"),
+        ("write_approval.automatic_on", None),
+        ("write_approval.automatic_off", "stopped"),
+    ]
+    assert events[1][1]["writes_used"] == AUTOMATIC_MAX_WRITES
+
+
+async def test_preapproved_route_for_stdio(running_runtime: AppRuntime) -> None:
+    rt = running_runtime
+    approver = tray_approver(rt.vault)
+    assert await approver.preapproved(make_request()) is None  # writes off
+    rt.write_switch.enable(accepted_responsibility=True)
+    assert await approver.preapproved(make_request()) is None
+    rt.approvals.start_automatic(AutomaticSpan.HOUR, confirm_text=AUTOMATIC_CONFIRM_TEXT)
+    assert await approver.preapproved(make_request()) is Outcome.AUTOMATIC
+    automatic = rt.approvals.automatic()
+    assert automatic is not None
+    assert automatic.writes_used == 1
+
+
+def test_runtime_mode_setting_and_writes_off(tmp_path: Path) -> None:
+    rt = AppRuntime.open(tmp_path / "vault.sqlite3", MemoryKeyStore())
+    try:
+        assert rt.approval_mode() is ApprovalMode.SIIGO_WINDOW
+        rt.set_approval_mode(ApprovalMode.NOTIFICATION)
+        rt.set_approval_mode(ApprovalMode.NOTIFICATION)  # no change, no event
+        assert rt.approval_mode() is ApprovalMode.NOTIFICATION
+        assert [e.detail["mode"] for e in rt.vault.events("write_approval.mode_changed")] == [
+            "notification"
+        ]
+        rt.write_switch.enable(accepted_responsibility=True)
+        rt.approvals.start_automatic(AutomaticSpan.HOUR, confirm_text=AUTOMATIC_CONFIRM_TEXT)
+        rt.write_switch.disable()
+        assert rt.approvals.automatic() is None
+        off = rt.vault.events("write_approval.automatic_off")
+        assert off[-1].detail["reason"] == "write_actions_off"
+    finally:
+        rt.shutdown()
+
+
+def test_automatic_approval_never_survives_a_restart(tmp_path: Path) -> None:
+    keystore = MemoryKeyStore()
+    rt = AppRuntime.open(tmp_path / "vault.sqlite3", keystore)
+    rt.write_switch.enable(accepted_responsibility=True)
+    rt.approvals.start_automatic(AutomaticSpan.TODAY, confirm_text=AUTOMATIC_CONFIRM_TEXT)
+    rt.shutdown()
+    again = AppRuntime.open(tmp_path / "vault.sqlite3", keystore)
+    try:
+        assert again.approvals.automatic() is None
+        assert again.write_switch.enabled is False
+    finally:
+        again.shutdown()

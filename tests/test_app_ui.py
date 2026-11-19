@@ -40,7 +40,13 @@ from mcp_siigo_unofficial.autostart import (
 )
 from mcp_siigo_unofficial.i18n import SETTING_LANGUAGE, Translator
 from mcp_siigo_unofficial.selftest import run_selftest
-from mcp_siigo_unofficial.server.approval import ApprovalRequest, Decision
+from mcp_siigo_unofficial.server.approval import (
+    AUTOMATIC_CONFIRM_TEXT,
+    ApprovalMode,
+    ApprovalRequest,
+    AutomaticSpan,
+    Decision,
+)
 from mcp_siigo_unofficial.server.transport import SETTING_PORT
 from mcp_siigo_unofficial.siigo import SiigoCredentials
 from mcp_siigo_unofficial.vault import MemoryKeyStore
@@ -468,6 +474,104 @@ def test_tray_shows_approval_windows_and_grants(
     runtime.approvals.on_close(third.id)  # type: ignore[misc]  # broker timeout
     process_events(until=lambda: not tray.approval_windows)
     assert tray.approval_windows == {}
+
+
+def test_minutes_left_rounds_up() -> None:
+    assert [tray_module._minutes_left(s) for s in (600, 599.5, 540.1, 60, 1, 0)] == [
+        10,
+        10,
+        10,
+        1,
+        1,
+        1,
+    ]
+
+
+def test_automatic_dialog_needs_the_exact_text(qapp: QApplication, tr: Translator) -> None:
+    dialog = dialogs_module.AutomaticApprovalDialog(tr, AutomaticSpan.HOUR)
+    assert not dialog.enable_button.isEnabled()
+    dialog.confirm.setText("approve all")
+    assert not dialog.enable_button.isEnabled()
+    dialog.confirm.setText(AUTOMATIC_CONFIRM_TEXT)
+    assert dialog.enable_button.isEnabled()
+    assert dialog.span is AutomaticSpan.HOUR
+
+
+def test_tray_automatic_approval(
+    tray: TrayController, runtime: AppRuntime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_exec(self: Any) -> int:
+        self.confirm.setText(AUTOMATIC_CONFIRM_TEXT)
+        self.accept()
+        return int(QDialog.DialogCode.Accepted)
+
+    monkeypatch.setattr(dialogs_module.AutomaticApprovalDialog, "exec", fake_exec)
+    tray.start_automatic(AutomaticSpan.HOUR)  # writes off: nothing happens
+    assert runtime.approvals.automatic() is None
+    tray.refresh()
+    assert not tray.auto_menu.menuAction().isVisible()
+
+    runtime.write_switch.enable(accepted_responsibility=True)
+    process_events()
+    tray.refresh()
+    assert tray.auto_menu.menuAction().isVisible()
+    tray.start_automatic(AutomaticSpan.HOUR)
+    auto = runtime.approvals.automatic()
+    assert auto is not None
+    assert auto.writes_left == 100
+    assert tray.auto_status_action.isVisible()
+    assert "AUTOMATIC APPROVAL: 60 min, 100 writes left" in tray.auto_status_action.text()
+    assert tray.tray.toolTip() == tray.tr_("tray.tooltip.auto")
+    assert not tray.auto_menu.menuAction().isVisible()
+    tray.stop_automatic()
+    assert runtime.approvals.automatic() is None
+    assert not tray.auto_status_action.isVisible()
+    assert tray.tray.toolTip() == tray.tr_("tray.tooltip.write")
+
+    def cancel_exec(self: Any) -> int:
+        self.confirm.setText("APPROVE")
+        self.reject()
+        return int(QDialog.DialogCode.Rejected)
+
+    monkeypatch.setattr(dialogs_module.AutomaticApprovalDialog, "exec", cancel_exec)
+    tray.start_automatic(AutomaticSpan.TODAY)
+    assert runtime.approvals.automatic() is None
+
+
+def test_tray_notification_first_mode(
+    tray: TrayController, runtime: AppRuntime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime.set_approval_mode(ApprovalMode.NOTIFICATION)
+    monkeypatch.setattr(tray_module.QSystemTrayIcon, "isSystemTrayAvailable", lambda: True)
+    monkeypatch.setattr(tray.tray, "isVisible", lambda: True)
+    runtime.write_switch.enable(accepted_responsibility=True)
+    process_events()
+    request = approval_request()
+    tray.show_approval(request)
+    assert request.id in tray.waiting_approvals
+    assert request.id not in tray.approval_windows
+    tray._open_waiting_approvals()  # the user clicked the notification
+    window = tray.approval_windows[request.id]
+    assert window.seconds_left() <= request.timeout_s
+    window.reject_button.click()
+    assert tray.waiting_approvals == {}
+
+    second = approval_request()
+    tray.show_approval(second)
+    runtime.write_switch.disable()  # writes off: waiting approvals are rejected
+    process_events(until=lambda: not tray.waiting_approvals)
+    assert tray.waiting_approvals == {}
+
+
+def test_settings_saves_the_approval_mode(
+    qapp: QApplication, runtime: AppRuntime, tr: Translator
+) -> None:
+    dialog = SettingsDialog(runtime, tr)
+    assert dialog.approval_mode.currentData() == "siigo_window"
+    assert dialog.approval_mode.count() == 3
+    dialog.approval_mode.setCurrentIndex(dialog.approval_mode.findData("ai_app"))
+    dialog._save()
+    assert runtime.approval_mode() is ApprovalMode.AI_APP
 
 
 # ---------------------------------------------------------------------- self-test

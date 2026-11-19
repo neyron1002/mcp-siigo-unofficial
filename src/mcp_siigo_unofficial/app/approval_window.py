@@ -46,13 +46,15 @@ class ApprovalWindow(QDialog):
         on_answer: AnswerCallback,
         parent: QWidget | None = None,
         clock: Callable[[], float] = time.monotonic,
+        seconds_left: float | None = None,
     ) -> None:
         super().__init__(parent)
         self.request = request
         self._tr = tr
         self._on_answer = on_answer
         self._clock = clock
-        self._deadline = clock() + request.timeout_s
+        left = request.timeout_s if seconds_left is None else seconds_left
+        self._deadline = clock() + max(0.0, left)
         self.decision: Decision | None = None
         self._silent = False
 

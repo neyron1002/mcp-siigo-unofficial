@@ -1,7 +1,8 @@
 """Tray and window icons, drawn with QPainter at run time.
 
 No image files and no image-format plugins are needed (plan D20). The write-mode
-icon adds a red warning badge (plan section 5.1).
+icon adds a red warning badge, and automatic approval turns the whole icon red
+(plan section 5.1).
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ WARNING = QColor("#D32F2F")
 SIZES = (16, 22, 24, 32, 48, 64, 128, 256)
 
 
-def _paint(size: int, write_mode: bool) -> QPixmap:
+def _paint(size: int, write_mode: bool, automatic: bool = False) -> QPixmap:
     pixmap = QPixmap(size, size)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
@@ -24,7 +25,7 @@ def _paint(size: int, write_mode: bool) -> QPixmap:
 
     # Rounded square background.
     painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(QBrush(BRAND))
+    painter.setBrush(QBrush(WARNING if automatic else BRAND))
     painter.drawRoundedRect(QRectF(0.04 * s, 0.04 * s, 0.92 * s, 0.92 * s), 0.22 * s, 0.22 * s)
 
     # A bridge: two pillars and an arch (the MCP is a bridge to the Siigo API).
@@ -39,7 +40,7 @@ def _paint(size: int, write_mode: bool) -> QPixmap:
     painter.drawLine(QPointF(0.32 * s, 0.62 * s), QPointF(0.32 * s, 0.82 * s))
     painter.drawLine(QPointF(0.68 * s, 0.62 * s), QPointF(0.68 * s, 0.82 * s))
 
-    if write_mode:
+    if write_mode and not automatic:
         # Red badge with a white exclamation mark, bottom right.
         r = 0.27 * s
         center = QPointF(s - r - 0.01 * s, s - r - 0.01 * s)
@@ -57,8 +58,8 @@ def _paint(size: int, write_mode: bool) -> QPixmap:
     return pixmap
 
 
-def app_icon(write_mode: bool = False) -> QIcon:
+def app_icon(write_mode: bool = False, automatic: bool = False) -> QIcon:
     icon = QIcon()
     for size in SIZES:
-        icon.addPixmap(_paint(size, write_mode))
+        icon.addPixmap(_paint(size, write_mode, automatic))
     return icon

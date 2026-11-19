@@ -104,12 +104,20 @@ def _open_runtime(*, follow_vault: bool) -> tuple[Vault, SiigoMCPServer]:
     )
     # stdio: approvals are shown by the running tray app. --serve (headless): no
     # window exists, and the switch is always off there anyway.
+    from mcp_siigo_unofficial.server.approval import SETTING_APPROVAL_MODE, ApprovalMode
+
     approver = None
     if follow_vault:
         from mcp_siigo_unofficial.server.transport import tray_approver
 
         approver = tray_approver(vault)
-    return vault, build_server(siigo, switch, vault=vault, approver=approver)
+    return vault, build_server(
+        siigo,
+        switch,
+        vault=vault,
+        approver=approver,
+        approval_mode=lambda: ApprovalMode.parse(vault.get_setting(SETTING_APPROVAL_MODE)),
+    )
 
 
 def _serve(port: int | None) -> int:

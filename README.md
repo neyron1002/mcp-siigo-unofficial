@@ -23,7 +23,7 @@ Not affiliated with Siigo S.A.S. Free, provided "as is", without warranty. MIT L
 A single downloadable file per operating system (Windows 10/11 x64, macOS 13+ on Apple silicon, Ubuntu 22.04/24.04 x64). It installs itself into your user folder with no administrator rights, and it runs as a tray app:
 
 - A local MCP server (Streamable HTTP on `127.0.0.1` with a private bearer key, plus a `--stdio` mode) with 45 read tools for Siigo catalogs, customers, products, invoices, credit notes, cash receipts, journals, and reports. See [MCP tools](docs/tools.md).
-- 9 write tools behind a **"Write actions" switch**, with a warning dialog, a red tray badge while enabled, and your approval of every write in the app's own approval window (with an optional "approve similar writes for 10 minutes"). See [Write actions](docs/usage.md#write-actions).
+- 9 write tools behind a **"Write actions" switch**, with a warning dialog, a red tray badge while enabled, and your approval of every write, in the mode you choose: the app's own approval window (default), a notification that opens it, or the AI app's question. Optional "approve similar writes for 10 minutes", and a guarded automatic approval for 1 hour or the day. See [Write actions](docs/usage.md#write-actions).
 - Siigo credentials stored in an encrypted local vault (AES-256-GCM, with the master key in the operating-system keychain). Only you type them, in the Settings dialog.
 - Signed updates (SHA-256 checksums signed with Ed25519) that ask before installing, run a self-test, and roll back if it fails.
 - Start at login, English and Spanish interface, and "Copy client setup" for Claude Code, Claude Desktop, Codex, GitHub Copilot in VS Code, and Gemini CLI.

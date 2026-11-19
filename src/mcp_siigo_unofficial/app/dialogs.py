@@ -34,6 +34,12 @@ from mcp_siigo_unofficial.i18n import (
     Language,
     Translator,
 )
+from mcp_siigo_unofficial.server.approval import (
+    AUTOMATIC_CONFIRM_TEXT,
+    AUTOMATIC_MAX_WRITES,
+    ApprovalMode,
+    AutomaticSpan,
+)
 from mcp_siigo_unofficial.siigo import DEFAULT_PARTNER_ID, SiigoCredentials, is_valid_partner_id
 
 
@@ -118,6 +124,13 @@ class SettingsDialog(QDialog):
         self.port.setRange(1024, 65535)
         self.port.setValue(runtime.port)
 
+        self.approval_mode = QComboBox()
+        for mode in ApprovalMode:
+            self.approval_mode.addItem(tr(f"settings.approval.{mode.value}"), mode.value)
+        self.approval_mode.setCurrentIndex(
+            max(0, self.approval_mode.findData(runtime.approval_mode().value))
+        )
+
         self.write_box = QCheckBox(tr("settings.write"))
         self.write_box.setChecked(runtime.write_switch.enabled)
         self.write_box.clicked.connect(self._write_clicked)
@@ -150,6 +163,7 @@ class SettingsDialog(QDialog):
         app_form.addRow(tr("settings.language"), self.language)
         app_form.addRow(tr("settings.port"), self.port)
         app_form.addRow(self.write_box)
+        app_form.addRow(tr("settings.approval"), self.approval_mode)
 
         buttons = QDialogButtonBox()
         self.save_button = buttons.addButton(
@@ -245,11 +259,56 @@ class SettingsDialog(QDialog):
             self.runtime.vault.set_setting(SETTING_LANGUAGE, language)
             self.tr_.set_language(language)
             self.language_changed.emit()
+        self.runtime.set_approval_mode(ApprovalMode.parse(self.approval_mode.currentData()))
         if self.port.value() != self.runtime.port:
             self.runtime.set_port(self.port.value())
             QMessageBox.information(self, self.tr_("settings.title"), self.tr_("settings.restart"))
         self.access_key.clear()
         self.accept()
+
+
+class AutomaticApprovalDialog(QDialog):
+    """W5: automatic approval turns on only after typing APPROVE ALL."""
+
+    def __init__(self, tr: Translator, span: AutomaticSpan, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setWindowTitle(tr("auto.title"))
+        self.setWindowIcon(app_icon(write_mode=True, automatic=True))
+        self.setModal(True)
+        self.setMinimumWidth(500)
+        self.span = span
+        body = QLabel(
+            tr(
+                "auto.body",
+                span=tr(f"auto.span.{span.value}"),
+                max=AUTOMATIC_MAX_WRITES,
+                text=AUTOMATIC_CONFIRM_TEXT,
+            )
+        )
+        body.setWordWrap(True)
+        body.setTextFormat(Qt.TextFormat.RichText)
+        self.confirm = QLineEdit()
+        self.confirm.setPlaceholderText(AUTOMATIC_CONFIRM_TEXT)
+        buttons = QDialogButtonBox()
+        self.enable_button = buttons.addButton(
+            tr("auto.enable"), QDialogButtonBox.ButtonRole.AcceptRole
+        )
+        cancel = buttons.addButton(tr("auto.cancel"), QDialogButtonBox.ButtonRole.RejectRole)
+        cancel.setDefault(True)
+        self.enable_button.setEnabled(False)
+        self.confirm.textChanged.connect(
+            lambda text: self.enable_button.setEnabled(text == AUTOMATIC_CONFIRM_TEXT)
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout = QVBoxLayout(self)
+        layout.addWidget(body)
+        layout.addWidget(self.confirm)
+        layout.addWidget(buttons)
+
+    @property
+    def typed(self) -> str:
+        return self.confirm.text()
 
 
 class AboutDialog(QDialog):

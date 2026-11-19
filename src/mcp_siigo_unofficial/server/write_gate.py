@@ -7,6 +7,8 @@ also needs the user's approval (``server/approval.py``).
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import threading
 from collections.abc import Callable
@@ -115,3 +117,9 @@ class WriteSwitch:
                 listener(state)
             except Exception:
                 log.exception("A write-switch listener failed")
+
+
+def arguments_digest(tool: str, arguments: dict[str, Any]) -> str:
+    """Stable digest of a tool call (used to match an AI app's answer to its question)."""
+    text = json.dumps([tool, arguments], sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
