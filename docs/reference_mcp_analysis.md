@@ -2,7 +2,7 @@
 
 - Date: 2026-11-18 (phase 0)
 - Plan: section 6 of [refined project inception v8](../prompts/2026.11.18_project_inception/2026.11.18_refined_project_inception_v8.md)
-- Authorship: the owner, Juan Manuel Pedraza, confirmed on 2026-11-18 that he wrote `mcp_siigo` ([raw prompt](../prompts/2026.11.18_unattended_execution/2026.11.18_raw_reference_is_own_mcp.md)). Its code, endpoint catalog, and docs may be adapted into `src/` under this project's MIT license.
+- Authorship: the owner, Juan Manuel Pedraza, confirmed on 2026-11-18 that he wrote `mcp_siigo` (in a private raw prompt). Its code, endpoint catalog, and docs may be adapted into `src/` under this project's MIT license.
 - Location: the owner keeps it locally in `references/existing_mcp/mcp_siigo/`. The `references/` folder is not part of the repository (it is ignored by git).
 
 ## 1. What `mcp_siigo` does
