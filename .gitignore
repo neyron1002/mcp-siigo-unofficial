@@ -31,3 +31,6 @@ references/
 
 # Git worktrees for parallel work sessions
 .worktrees/
+
+# The owner's raw prompts stay private (CLAUDE.md rule 6)
+prompts/raw/
