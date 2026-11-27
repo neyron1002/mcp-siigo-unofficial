@@ -95,6 +95,9 @@ invoicing software). Results are compact JSON; errors include Siigo's error code
 - Write tools exist only while the user turns on "Write actions" in the app's tray menu.
   When they are off, tell the user that only they can enable them from the tray; never ask
   them to bypass it. Every write needs the user's explicit approval (see each write tool).
+- Deletes and annulments can't be undone, and emails and webhooks send data outside Siigo:
+  the user approves them one at a time. Prefer a credit note or an annulment to deleting an
+  invoice.
 
 {LIABILITY_STATEMENT}
 """
