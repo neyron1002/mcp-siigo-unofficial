@@ -29,7 +29,16 @@ IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9]{1,30}$")
 TEST_USERNAME = "sandbox@example.com"
 TEST_ACCESS_KEY = "dGVzdC1hY2Nlc3Mta2V5LW5vdC1yZWFs"
 
-RESOURCES = ("customers", "products", "invoices")
+RESOURCES = (
+    "customers",
+    "products",
+    "invoices",
+    "quotations",
+    "purchases",
+    "purchase-support-documents",
+    "payment-receipts",
+    "account-groups",
+)
 CATALOGS: dict[str, list[dict[str, Any]]] = {
     "taxes": [{"id": 13156, "name": "IVA 19%", "type": "IVA", "percentage": 19, "active": True}],
     "payment-types": [{"id": 5636, "name": "Contado", "type": "ElectronicInvoice"}],
