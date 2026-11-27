@@ -42,6 +42,7 @@ dev = [
     "mypy>=1.18",
     "pytest>=8.4",
     "pytest-cov>=7.0",
+    "pyyaml>=6.0",
 ]
 
 [build-system]
