@@ -62,7 +62,7 @@ and every write still needs your approval.
 | `siigo_list_warehouses` | List warehouses | `GET /v1/warehouses` |
 | `siigo_list_webhooks` | List webhooks | `GET /v1/webhooks` |
 
-## Write tools (27)
+## Write tools (31)
 
 | Tool | Title | Siigo API |
 |---|---|---|
@@ -80,12 +80,15 @@ and every write still needs your approval.
 | `siigo_create_support_document` | Create support document | `POST /v1/purchase-support-documents` |
 | `siigo_create_voucher` | Create voucher | `POST /v1/vouchers` |
 | `siigo_create_voucher_misc_income` | Create voucher misc income | `POST /v1/vouchers` |
+| `siigo_create_webhook` | Create webhook | `POST /v1/webhooks` |
 | `siigo_delete_invoice` | Delete invoice | `DELETE /v1/invoices/{id}` |
 | `siigo_delete_payment_receipt` | Delete payment receipt | `DELETE /v1/payment-receipts/{id}` |
 | `siigo_delete_product` | Delete product | `DELETE /v1/products/{id}` |
 | `siigo_delete_purchase` | Delete purchase | `DELETE /v1/purchases/{id}` |
 | `siigo_delete_quotation` | Delete quotation | `DELETE /v1/quotations/{id}` |
 | `siigo_delete_support_document` | Delete support document | `DELETE /v1/purchase-support-documents/{id}` |
+| `siigo_delete_webhook` | Delete webhook | `DELETE /v1/webhooks/{id}` |
+| `siigo_send_invoice_email` | Send invoice email | `POST /v1/invoices/{id}/mail` |
 | `siigo_update_account_group` | Update account group | `PUT /v1/account-groups/{id}` |
 | `siigo_update_customer` | Update customer | `PUT /v1/customers/{id}` |
 | `siigo_update_invoice` | Update invoice | `PUT /v1/invoices/{id}` |
@@ -93,3 +96,4 @@ and every write still needs your approval.
 | `siigo_update_purchase` | Update purchase | `PUT /v1/purchases/{id}` |
 | `siigo_update_quotation` | Update quotation | `PUT /v1/quotations/{id}` |
 | `siigo_update_support_document` | Update support document | `PUT /v1/purchase-support-documents/{id}` |
+| `siigo_update_webhook` | Update webhook | `PUT /v1/webhooks` |

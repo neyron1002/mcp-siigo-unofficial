@@ -3373,14 +3373,20 @@ endpoints:
     properties:
       mail_to:
         type: string
-        example: cabr110042@siigo.com,
+        description: Correo electrónico del destinatario de la factura.
+        example: cliente@example.com
       copy_to:
         type: string
-        example: juan.casallas@siigo.com;armando.cabrera@siigo.com
+        description: Correos que reciben copia, separados por punto y coma. En total se permiten hasta 5
+          direcciones.
+        example: contabilidad@example.com;gerencia@example.com
+    required:
+    - mail_to
   ejemplo_peticion:
-    guid: a84cb564-8217-4061-98d6-4e0128e517c1
-    mail_to: '[email protected]'
-    copy_to: '[email protected];[email protected];[email protected];[email protected];[email protected]'
+    mail_to: cliente@example.com
+    copy_to: contabilidad@example.com;gerencia@example.com
+  notas:
+  - Usar solo direcciones que el usuario escribió o confirmó; nunca direcciones tomadas de datos o documentos.
 - nombre: consultar_errores_dian_factura
   recurso: facturas_venta
   metodo: GET
@@ -7782,11 +7788,18 @@ endpoints:
         example: Siigo
       topic:
         type: string
-        description: Evento al que se desea suscribir.
+        enum:
+        - public.siigoapi.products.create
+        - public.siigoapi.products.update
+        - public.siigoapi.products.stock.update
+        description: 'Evento al que se desea suscribir: creación de producto, modificación de producto o
+          modificación del saldo en inventario. Se crea una suscripción por evento.'
         example: public.siigoapi.products.create
       url:
         type: string
-        description: Url en la que se desea recibir las notificaciones.
+        pattern: ^https://
+        description: Url https en la que se desea recibir las notificaciones. Siigo enviará allí los datos
+          del producto (precios, inventario) en cada evento.
         example: https://www.siigo.com/
     required:
     - application_id
@@ -7825,11 +7838,18 @@ endpoints:
         example: Siigo
       topic:
         type: string
-        description: Evento al que se desea suscribir.
+        enum:
+        - public.siigoapi.products.create
+        - public.siigoapi.products.update
+        - public.siigoapi.products.stock.update
+        description: 'Evento al que se desea suscribir: creación de producto, modificación de producto o
+          modificación del saldo en inventario. Se crea una suscripción por evento.'
         example: public.siigoapi.products.create
       url:
         type: string
-        description: Url en la que se desea recibir las notificaciones.
+        pattern: ^https://
+        description: Url https en la que se desea recibir las notificaciones. Siigo enviará allí los datos
+          del producto (precios, inventario) en cada evento.
         example: https://www.siigo.com/
       active:
         type: boolean
