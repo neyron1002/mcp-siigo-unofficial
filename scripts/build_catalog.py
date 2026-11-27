@@ -89,6 +89,10 @@ WRITE_TOOLS: dict[str, str] = {
     "crear_comprobante_contable": "create_journal",
 }
 
+#: Risk level of each write tool (API coverage plan, Part 3). Writes not listed here
+#: are plain creates or updates ("change").
+RISK: dict[str, str] = {}
+
 #: Writes left out on purpose (deletes, annulments, emails, batches, and resources
 #: outside plan section 5). Listed so that a new source endpoint is never missed.
 EXCLUDED: frozenset[str] = frozenset(
@@ -183,6 +187,7 @@ def convert(source: dict[str, Any]) -> dict[str, Any]:
         if not read_only:
             tool["request_example"] = e.get("ejemplo_peticion")
             tool["notes"] = e.get("notas") or []
+            tool["risk"] = RISK.get(source_name, "change")
         tools.append(tool)
     return {
         "source": "owner's mcp_siigo catalog",

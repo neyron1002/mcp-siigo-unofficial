@@ -99,3 +99,12 @@ def test_document_type_tools_have_no_fake_filters() -> None:  # U8
     for tool in load_catalog().tools:
         if tool.path == "/v1/document-types" and tool.fixed_query:
             assert tool.params == (), tool.name
+
+
+def test_every_write_tool_has_a_risk_level() -> None:
+    import json
+
+    data = json.loads(CATALOG_JSON.read_text(encoding="utf-8"))
+    for tool in data["tools"]:
+        if not tool["read_only"]:
+            assert tool["risk"] in {"change", "outbound", "permanent"}, tool["name"]
