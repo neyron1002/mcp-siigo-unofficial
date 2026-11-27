@@ -1,6 +1,6 @@
 [project]
 name = "mcp-siigo-unofficial"
-version = "0.2.1-rc.1"
+version = "0.2.1rc1"
 description = "Unofficial MCP server for the Siigo API, in a portable tray app. Free, no warranty, not affiliated with Siigo S.A.S."
 readme = "README.md"
 license = "MIT"
