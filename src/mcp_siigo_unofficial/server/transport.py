@@ -121,6 +121,10 @@ class HttpServerThread:
             host=HOST,
             port=port,
             log_level="warning",
+            # Keep the app's logging. uvicorn's default config checks
+            # sys.stdout.isatty(), and a Windows window build has no stdout (None).
+            log_config=None,
+            use_colors=False,
             lifespan="on",
             access_log=False,
         )

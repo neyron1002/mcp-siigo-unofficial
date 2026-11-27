@@ -24,6 +24,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication, QDialog
 
 from mcp_siigo_unofficial.app import dialogs as dialogs_module
+from mcp_siigo_unofficial.app import runtime as runtime_module
 from mcp_siigo_unofficial.app import tray as tray_module
 from mcp_siigo_unofficial.app.approval_window import ApprovalWindow, format_seconds
 from mcp_siigo_unofficial.app.dialogs import (
@@ -132,6 +133,20 @@ def test_second_instance_asks_the_first_to_show(tmp_path: Path, runtime: AppRunt
     assert "already in use" in (other.server_error or "")
     assert other.ask_running_instance_to_show()
     assert shown.wait(5)
+
+
+def test_server_error_is_reported_not_raised(
+    runtime: AppRuntime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Any start failure (v0.2.0: a logging ValueError) keeps the tray app open."""
+
+    def broken(*args: object, **kwargs: object) -> None:
+        raise ValueError("Unable to configure formatter 'default'")
+
+    monkeypatch.setattr(runtime_module, "HttpServerThread", broken)
+    assert runtime.start_server() is False
+    assert runtime.server_error == "Unable to configure formatter 'default'"
+    assert not runtime.server_running
 
 
 def test_ask_to_show_without_a_running_instance(runtime: AppRuntime) -> None:

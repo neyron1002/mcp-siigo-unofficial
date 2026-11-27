@@ -135,6 +135,19 @@ def test_http_server_binds_only_to_loopback(vault: Vault) -> None:
     assert port_is_free(port)
 
 
+def test_http_server_starts_without_console(vault: Vault, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A Windows window build opened from Explorer has no stdout or stderr (v0.2.0 bug)."""
+    monkeypatch.setattr(sys, "stdout", None)
+    monkeypatch.setattr(sys, "stderr", None)
+    server = build_server(SiigoClient(lambda: None), WriteSwitch(vault))
+    thread = HttpServerThread(server, ensure_bearer_key(vault), port=free_port())
+    thread.start()
+    try:
+        assert thread.running
+    finally:
+        thread.stop()
+
+
 async def test_stdio_end_to_end(tmp_path: Path) -> None:
     env = {
         **os.environ,

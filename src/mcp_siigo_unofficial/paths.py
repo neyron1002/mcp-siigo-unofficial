@@ -35,3 +35,8 @@ def data_dir() -> Path:
 def vault_path() -> Path:
     """Location of the encrypted vault database."""
     return data_dir() / "vault.sqlite3"
+
+
+def log_path() -> Path:
+    """Log file of a build with no console (never holds secrets)."""
+    return data_dir() / "logs" / "app.log"

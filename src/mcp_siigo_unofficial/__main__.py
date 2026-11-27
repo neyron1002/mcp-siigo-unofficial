@@ -22,6 +22,7 @@ import os
 import sys
 import threading
 from collections.abc import Sequence
+from types import TracebackType
 from typing import TYPE_CHECKING
 
 import anyio
@@ -35,6 +36,57 @@ if TYPE_CHECKING:
 APP_NAME = "MCP Siigo Unofficial"
 #: Development/CI override of the Siigo base URL (for the mock Siigo API).
 BASE_URL_ENV = "MCP_SIIGO_UNOFFICIAL_SIIGO_BASE_URL"
+#: Size limit of the log file of a build with no console (one older file is kept).
+LOG_MAX_BYTES = 1_000_000
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+
+
+def setup_logging() -> None:
+    """Send warnings to stderr, or to a log file when the app has no console.
+
+    A Windows window build (PyInstaller ``console=False``) opened from Explorer or
+    at login has ``sys.stdout`` and ``sys.stderr`` set to ``None``. Code that prints
+    or checks for a terminal then fails, so the missing streams point to
+    ``os.devnull``, and logs and uncaught errors go to a small file in the data folder.
+    """
+    no_console = sys.stderr is None
+    for name in ("stdout", "stderr"):
+        if getattr(sys, name) is None:
+            # Kept open for the life of the process.
+            setattr(sys, name, open(os.devnull, "w", encoding="utf-8"))  # noqa: SIM115
+    if not no_console:
+        logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
+        return
+
+    from logging.handlers import RotatingFileHandler
+
+    from mcp_siigo_unofficial.paths import log_path
+
+    path = log_path()
+    handler: logging.Handler
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handler = RotatingFileHandler(
+            path, maxBytes=LOG_MAX_BYTES, backupCount=1, encoding="utf-8", delay=True
+        )
+    except OSError:
+        handler = logging.StreamHandler(sys.stderr)  # os.devnull: nowhere to write
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    root = logging.getLogger()
+    root.addHandler(handler)
+    root.setLevel(logging.WARNING)
+
+    previous = sys.excepthook
+
+    def log_uncaught(
+        kind: type[BaseException], value: BaseException, tb: TracebackType | None
+    ) -> None:
+        logging.getLogger("mcp_siigo_unofficial").critical(
+            "Uncaught error", exc_info=(kind, value, tb)
+        )
+        previous(kind, value, tb)
+
+    sys.excepthook = log_uncaught
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -222,7 +274,7 @@ def _apply_update(args: argparse.Namespace) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line. Without options, start the tray app."""
     args = _parser().parse_args(list(argv) if argv is not None else None)
-    logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
+    setup_logging()
     if args.stdio:
         return _stdio()
     if args.serve:

@@ -109,6 +109,7 @@ The previous version is always kept. After an update, write actions are off, lik
 - `vault.sqlite3` is the encrypted vault (AES-256-GCM). It holds your Siigo credentials, the private server key for AI clients, your settings, and a log of write-switch changes and writes. The key that opens it is kept in your system's keychain, under the name `mcp-siigo-unofficial`.
 - `versions/` holds the installed version and the previous one; `current` and `previous` name them.
 - `update.log` and `update-result.json` describe the last update.
+- `logs/app.log` (Windows) holds the app's warnings and errors when it runs without a console window, as it does when you open it from the Start menu. It never holds your credentials or keys.
 
 Nothing is sent anywhere except to the Siigo API (your requests) and to GitHub (the update check and downloads).
 
