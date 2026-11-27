@@ -3,7 +3,7 @@
 # en el MCP anterior del autor (MIT). Desde 2026-11-27 este archivo es la fuente que se edita a mano;
 # scripts/build_catalog.py lo convierte en src/mcp_siigo_unofficial/server/catalog.json.
 # Una entrada por endpoint; el servidor MCP registra una tool `siigo_<nombre>` por cada una.
-version: '2026-10-15'
+version: '2026-11-27'
 base_url: https://api.siigo.com
 endpoints:
 - nombre: generar_token
@@ -118,7 +118,9 @@ endpoints:
         - Product
         - Service
         - ConsumerGood
-        description: Tipo de producto, valor por default Product
+        - Combo
+        description: Tipo de producto, valor por default Product. Combo solo con el plan Siigo Nube Premium y
+          requiere components.
       stock_control:
         type: boolean
         description: Control de inventario, valor por default false.
@@ -230,6 +232,24 @@ endpoints:
             description: Modelo.
             example: Loiry
         description: 'Campos adicionales como: Código de barras, Marca, Código arancelario, Modelo.'
+      components:
+        type: array
+        description: Componentes de un producto de tipo Combo (solo plan Siigo Nube Premium). No se pueden modificar
+          si el combo ya se usó en documentos.
+        items:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Código de un producto existente y activo en Siigo Nube.
+              example: Item-1
+            quantity:
+              type: number
+              description: Cantidad de ese producto en el combo.
+              example: 2
+          required:
+          - code
+          - quantity
     required:
     - code
     - name
@@ -551,7 +571,9 @@ endpoints:
         - Product
         - Service
         - ConsumerGood
-        description: Tipo de producto, valor por default Product
+        - Combo
+        description: Tipo de producto, valor por default Product. Combo solo con el plan Siigo Nube Premium y
+          requiere components.
       stock_control:
         type: boolean
         description: Control de inventario, valor por default false.
@@ -663,6 +685,24 @@ endpoints:
             description: Modelo.
             example: Loiry
         description: 'Campos adicionales como: Código de barras, Marca, Código arancelario, Modelo.'
+      components:
+        type: array
+        description: Componentes de un producto de tipo Combo (solo plan Siigo Nube Premium). No se pueden modificar
+          si el combo ya se usó en documentos.
+        items:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Código de un producto existente y activo en Siigo Nube.
+              example: Item-1
+            quantity:
+              type: number
+              description: Cantidad de ese producto en el combo.
+              example: 2
+          required:
+          - code
+          - quantity
     required:
     - code
     - name
@@ -1041,6 +1081,16 @@ endpoints:
             description: Usuario cobrador encargado del recaudo de cartera.
             example: 629
         description: Asigna el vendedor y el cobrador encargado del recaudo de cartera al cliente.
+      additional_fields:
+        type: object
+        description: Campos adicionales del tercero.
+        properties:
+          CUCON:
+            type: string
+            description: Código Único de Contrato (SIIFA) de terceros del sector salud, alfanumérico de 64 caracteres.
+              Lo usan fabricantes, importadores y titulares de registro sanitario que venden medicamentos, dispositivos
+              o insumos a las EPS.
+            example: CUCON1234567890
     required:
     - person_type
     - id_type
@@ -1543,6 +1593,16 @@ endpoints:
             description: Usuario cobrador encargado del recaudo de cartera.
             example: 629
         description: Asigna el vendedor y el cobrador encargado del recaudo de cartera al cliente.
+      additional_fields:
+        type: object
+        description: Campos adicionales del tercero.
+        properties:
+          CUCON:
+            type: string
+            description: Código Único de Contrato (SIIFA) de terceros del sector salud, alfanumérico de 64 caracteres.
+              Lo usan fabricantes, importadores y titulares de registro sanitario que venden medicamentos, dispositivos
+              o insumos a las EPS.
+            example: CUCON1234567890
     required:
     - person_type
     - id_type
@@ -1979,6 +2039,123 @@ endpoints:
         type: object
         properties: {}
         description: 'Campos adicionales como: Orden de compra y Orden de entrega.'
+      retentions:
+        type: array
+        description: Retenciones de la factura (ReteICA, ReteIVA o Autorretención). Los id se consultan en /v1/taxes.
+        items:
+          type: object
+          properties:
+            id:
+              type: number
+              description: Identificador del impuesto de retención.
+              example: 13156
+          required:
+          - id
+      advance_payment:
+        type: number
+        description: Valor de anticipo o copago. Positivo, máximo 2 decimales, no mayor que el total. El tipo
+          de factura debe tener esta opción activa en Siigo Nube.
+        example: 10000
+      healthcare_company:
+        type: object
+        description: 'Campos del sector salud (Resolución 948). Solo para tipos de comprobante marcados para
+          el sector salud. Reglas: con contract_number no se envían policy_number ni nonContractInvoiceReason;
+          sin contract_number, nonContractInvoiceReason es obligatorio; con policy_number no se envía contract_number
+          y nonContractInvoiceReason es obligatorio. En SS-CUFE se envía al menos uno de copayment, coinsurance,
+          cost_sharing o recovery_charge. Cambios vigentes desde el 2026-07-01.'
+        properties:
+          operation_type:
+            type: string
+            enum:
+            - SS-CUFE
+            - SS-SinAporte
+            - SS-Recaudo
+            description: Tipo de operación del sector salud. Obligatorio en facturas del sector salud.
+            example: SS-CUFE
+          period_start:
+            type: string
+            description: Inicio del periodo de facturación, formato yyyy-MM-dd. Obligatorio en SS-CUFE y SS-SinAporte.
+            example: '2024-02-14'
+          period_end:
+            type: string
+            description: Fin del periodo de facturación, formato yyyy-MM-dd. Obligatorio en SS-CUFE y SS-SinAporte.
+            example: '2024-03-16'
+          payment_method:
+            type: string
+            enum:
+            - '01'
+            - '02'
+            - '03'
+            - '04'
+            description: 'Modalidad de pago (SS-CUFE y SS-SinAporte): 01 pago individual por caso, conjunto
+              integral de atenciones, paquete o canasta; 02 pago global prospectivo; 03 pago por capitación;
+              04 pago por evento. La opción 05 fue eliminada.'
+            example: '04'
+          service_plan:
+            type: string
+            enum:
+            - '02'
+            - '03'
+            - '04'
+            - '05'
+            - '06'
+            - '07'
+            - 08
+            - 09
+            - '10'
+            - '11'
+            - '12'
+            - '13'
+            - '14'
+            - '15'
+            - '16'
+            - '17'
+            description: 'Cobertura o plan de servicios (SS-CUFE y SS-SinAporte): 02 presupuesto máximo; 03
+              prima EPS/EOC, no asegurados SOAT; 04 póliza SOAT; 05 ARL; 06 ADRES; 07 salud pública; 08 entidad
+              territorial, recursos de oferta; 09 urgencias población migrante; 10 plan complementario; 11 medicina
+              prepagada; 12 otras pólizas; 13 régimen especial o excepción; 14 Fondo Nacional de Salud de las
+              Personas Privadas de la Libertad; 15 particular; 16 UPC régimen contributivo; 17 UPC régimen subsidiado.
+              La opción 01 fue eliminada.'
+            example: '16'
+          policy_number:
+            type: string
+            description: Número de póliza (SS-CUFE y SS-SinAporte), máximo 50 caracteres.
+            example: ZAS321456677
+          contract_number:
+            type: string
+            description: Número de contrato (SS-CUFE y SS-SinAporte), máximo 64 caracteres.
+            example: CON1245636
+          nonContractInvoiceReason:
+            type: string
+            enum:
+            - '01'
+            - '02'
+            - '03'
+            - '04'
+            - '05'
+            - '06'
+            description: 'Motivo de factura sin contrato: 01 urgencias; 02 a cargo de ADRES, aseguradoras SOAT
+              o planes voluntarios; 03 fallos de tutela u órdenes judiciales; 04 portabilidad o asignación masiva
+              de afiliados; 05 casos excepcionales sin contrato; 06 recuperación de órganos para trasplante.'
+            example: '03'
+          copayment:
+            type: number
+            description: Copago. Solo para SS-CUFE. Positivo, máximo 10 enteros y 2 decimales.
+            example: 22505.2
+          coinsurance:
+            type: number
+            description: Cuota moderadora. Solo para SS-CUFE. Positivo, máximo 10 enteros y 2 decimales.
+            example: 22505.2
+          cost_sharing:
+            type: number
+            description: Pagos compartidos. Solo para SS-CUFE. Positivo, máximo 10 enteros y 2 decimales.
+            example: 22505.2
+          recovery_charge:
+            type: number
+            description: Cuota de recuperación. Solo para SS-CUFE. Positivo, máximo 10 enteros y 2 decimales.
+            example: 22505.2
+        required:
+        - operation_type
     required:
     - document
     - date
@@ -3920,6 +4097,148 @@ endpoints:
           required:
           - value
         description: Formas de pago asociadas a la Nota Crédito.
+      customer:
+        type: object
+        description: Cliente. Obligatorio solo si la nota crédito es de una factura que no existe en Siigo Nube.
+        properties:
+          identification:
+            type: string
+            description: Número de identificación del cliente.
+            example: '28211179'
+          branch_office:
+            type: number
+            description: Sucursal, valor por default 0.
+            example: 0
+        required:
+        - identification
+      seller:
+        type: number
+        description: ID del vendedor (/v1/users). Obligatorio solo si la nota crédito es de una factura que
+          no existe en Siigo Nube.
+        example: 62
+      invoice_data:
+        type: object
+        description: Datos de una factura que no existe en Siigo Nube. Reemplaza el campo invoice. number y
+          cufe son obligatorios si reason es 2.
+        properties:
+          date:
+            type: string
+            description: Fecha de la factura, anterior a la de la nota crédito, formato yyyy-MM-dd.
+            example: '2024-03-20'
+          prefix:
+            type: string
+            description: Prefijo de la factura.
+            example: FV
+          number:
+            type: number
+            description: Consecutivo de la factura.
+            example: 458
+          cufe:
+            type: string
+            description: CUFE de la factura, máximo 200 caracteres.
+            example: 302580df-838b-4531-b8bf-dd3c98b34059
+        required:
+        - date
+      healthcare_company:
+        type: object
+        description: 'Campos del sector salud (Resolución 948). Solo para tipos de comprobante marcados para
+          el sector salud. Reglas: con contract_number no se envían policy_number ni nonContractInvoiceReason;
+          sin contract_number, nonContractInvoiceReason es obligatorio; con policy_number no se envía contract_number
+          y nonContractInvoiceReason es obligatorio. En SS-CUFE se envía al menos uno de copayment, coinsurance,
+          cost_sharing o recovery_charge. Cambios vigentes desde el 2026-07-01.'
+        properties:
+          operation_type:
+            type: string
+            enum:
+            - SS-CUFE
+            - SS-SinAporte
+            - SS-Recaudo
+            description: Tipo de operación del sector salud. Obligatorio en facturas del sector salud.
+            example: SS-CUFE
+          period_start:
+            type: string
+            description: Inicio del periodo de facturación, formato yyyy-MM-dd. Obligatorio en SS-CUFE y SS-SinAporte.
+            example: '2024-02-14'
+          period_end:
+            type: string
+            description: Fin del periodo de facturación, formato yyyy-MM-dd. Obligatorio en SS-CUFE y SS-SinAporte.
+            example: '2024-03-16'
+          payment_method:
+            type: string
+            enum:
+            - '01'
+            - '02'
+            - '03'
+            - '04'
+            description: 'Modalidad de pago (SS-CUFE y SS-SinAporte): 01 pago individual por caso, conjunto
+              integral de atenciones, paquete o canasta; 02 pago global prospectivo; 03 pago por capitación;
+              04 pago por evento. La opción 05 fue eliminada.'
+            example: '04'
+          service_plan:
+            type: string
+            enum:
+            - '02'
+            - '03'
+            - '04'
+            - '05'
+            - '06'
+            - '07'
+            - 08
+            - 09
+            - '10'
+            - '11'
+            - '12'
+            - '13'
+            - '14'
+            - '15'
+            - '16'
+            - '17'
+            description: 'Cobertura o plan de servicios (SS-CUFE y SS-SinAporte): 02 presupuesto máximo; 03
+              prima EPS/EOC, no asegurados SOAT; 04 póliza SOAT; 05 ARL; 06 ADRES; 07 salud pública; 08 entidad
+              territorial, recursos de oferta; 09 urgencias población migrante; 10 plan complementario; 11 medicina
+              prepagada; 12 otras pólizas; 13 régimen especial o excepción; 14 Fondo Nacional de Salud de las
+              Personas Privadas de la Libertad; 15 particular; 16 UPC régimen contributivo; 17 UPC régimen subsidiado.
+              La opción 01 fue eliminada.'
+            example: '16'
+          policy_number:
+            type: string
+            description: Número de póliza (SS-CUFE y SS-SinAporte), máximo 50 caracteres.
+            example: ZAS321456677
+          contract_number:
+            type: string
+            description: Número de contrato (SS-CUFE y SS-SinAporte), máximo 64 caracteres.
+            example: CON1245636
+          nonContractInvoiceReason:
+            type: string
+            enum:
+            - '01'
+            - '02'
+            - '03'
+            - '04'
+            - '05'
+            - '06'
+            description: 'Motivo de factura sin contrato: 01 urgencias; 02 a cargo de ADRES, aseguradoras SOAT
+              o planes voluntarios; 03 fallos de tutela u órdenes judiciales; 04 portabilidad o asignación masiva
+              de afiliados; 05 casos excepcionales sin contrato; 06 recuperación de órganos para trasplante.'
+            example: '03'
+          copayment:
+            type: number
+            description: Copago. Solo para SS-CUFE. Positivo, máximo 10 enteros y 2 decimales.
+            example: 22505.2
+          coinsurance:
+            type: number
+            description: Cuota moderadora. Solo para SS-CUFE. Positivo, máximo 10 enteros y 2 decimales.
+            example: 22505.2
+          cost_sharing:
+            type: number
+            description: Pagos compartidos. Solo para SS-CUFE. Positivo, máximo 10 enteros y 2 decimales.
+            example: 22505.2
+          recovery_charge:
+            type: number
+            description: Cuota de recuperación. Solo para SS-CUFE. Positivo, máximo 10 enteros y 2 decimales.
+            example: 22505.2
+        required:
+        - operation_type
     required:
     - document
     - date
@@ -3967,63 +4286,7 @@ endpoints:
   descripcion: Lista todos los tipos de notas crédito que se encuentran configurados en Siigo Nube y sus
     características.
   lectura: true
-  parametros:
-  - nombre: id
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Identificador de la nota crédito.
-  - nombre: code
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Codigo del tipo de nota crédito.
-  - nombre: name
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Nombre interno para identificar el comprobante de nota crédito.
-  - nombre: description
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Descripción del nombre de la nota crédito.
-  - nombre: active
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si la nota crédito esta activa o no.
-  - nombre: cost_center
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si se pueden manejar centros de costo o no en este tipo de nota crédito.
-  - nombre: cost_center_mandatory
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si se maneja centro de costo de forma obligatoria en este tipo de nota crédito.
-  - nombre: cost_center_default
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si se maneja un centro de costos por defecto en el tipo de nota crédito.
-  - nombre: automatic_number
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si se maneja numeración automática o no en este tipo de nota crédito, si es false,
-      en la creación de nota crédito usando este tipo, se debe enviar el campo "number".
-  - nombre: consecutive
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Número del próximo consecutivo de la nota crédito.
-  - nombre: customer_by_item
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si el tipo de nota crédito maneja ingresos para terceros en los items.
+  parametros: []
   doc: 15_notas_credito.md
   fuentes:
   - apiary
@@ -5542,8 +5805,9 @@ endpoints:
         enum:
         - DebtPayment
         - AdvancePayment
-        - Detailed
-        description: Tipo de Recibo de Caja.
+        description: 'Tipo de Recibo de Caja: DebtPayment (abono a deuda) o AdvancePayment (anticipo). Para
+          otros ingresos se usa la tool del recibo de caja de otros ingresos (MiscIncome). Siigo eliminó el
+          tipo avanzado (Detailed).'
       customer:
         type: object
         properties:
@@ -5573,6 +5837,11 @@ endpoints:
         - code
         - exchange_rate
         description: Código de Moneda Extranjera
+      cost_center:
+        type: number
+        description: Identificador del centro de costos. Campo opcional, debe existir en Siigo Nube y estar
+          activo.
+        example: 235
       items:
         type: array
         items:
@@ -5593,6 +5862,10 @@ endpoints:
                   type: number
                   description: Número de la cuota que se va a pagar o a abonar
                   example: 1
+                date:
+                  type: string
+                  description: Fecha de pago del vencimiento, formato yyyy-MM-dd.
+                  example: '2021-05-22'
               required:
               - prefix
               - consecutive
@@ -5609,8 +5882,9 @@ endpoints:
                     example: 13156
                   base:
                     type: number
+                    description: Base del impuesto.
                     example: 100000
-              description: Impuestos que se desean asociar al producto o servicio.
+              description: Impuestos aplicados al vencimiento para ajustar el saldo.
             discounts:
               type: array
               items:
@@ -5627,7 +5901,8 @@ endpoints:
                 required:
                 - id
                 - value
-              description: ID de los descuentos a aplicar del saldo del vencimeinto.
+              description: Descuentos a aplicar al saldo del vencimiento. Los id se consultan con la tool
+                de descuentos de recibos de caja (/v1/expenses).
             value:
               type: number
               description: Valor total del item
@@ -5701,24 +5976,24 @@ endpoints:
   ejemplo_respuesta:
     id: 63f918c2-ca65-4edc-a7db-66bcdd5159fb
     document:
-      id: 7714
+      id: 170674
     number: 22
     name: RC-2-22
-    date: '2023-12-15'
-    type: Detailed
+    date: '2026-03-19'
+    type: MiscIncome
     customer:
       id: 6b6ceb28-b2eb-4b98-b3dd-26648a933c81
-      identification: '13832081'
+      identification: '1152489636'
       branch_office: 0
-    items:
-    - account:
-        code: '11100501'
-        movement: Credit
-      description: Descripción Crédito
-      value: 119000
-    observations: Observaciones
+    income:
+      id: 174
+    payment:
+      id: 3720
+      name: Efectivo
+      value: 12000
+    observations: observación de prueba
     metadata:
-      created: '2020-06-15T03:33:17.208Z'
+      created: '2026-03-19T03:33:17.208Z'
       last_updated: ''
   cuerpo:
     type: object
@@ -5729,7 +6004,7 @@ endpoints:
           id:
             type: number
             description: Identificador del comprobante *https://api.siigo.com/v1/document-types?type=RC*
-            example: 7714
+            example: 170674
         required:
         - id
         description: Tipo de Comprobante (Para verificar la configuración ir a Siigo Nube en el menú Configuración
@@ -5737,19 +6012,19 @@ endpoints:
       date:
         type: string
         description: Fecha de elaboración del recibo de caja, formato yyyy-MM-dd.
-        example: '2023-12-15'
+        example: '2026-03-19'
       type:
         type: string
         enum:
-        - Detailed
-        description: Tipo de recibo de caja
+        - MiscIncome
+        description: Tipo de recibo de caja. Siempre MiscIncome (otros ingresos).
       customer:
         type: object
         properties:
           identification:
             type: string
             description: Número de identificación del cliente.
-            example: '209048401'
+            example: '1152489636'
           branch_office:
             type: number
             description: Sucursal, valor por default 0.
@@ -5761,47 +6036,43 @@ endpoints:
         type: number
         description: Centro de costos. El campo es obligatorio según la configuración del comprobante.
         example: 235
-      items:
-        type: array
-        items:
-          type: object
-          properties:
-            account:
-              type: object
-              properties:
-                code:
-                  type: string
-                  description: Código de la cuenta contable.
-                  example: '11100501'
-                movement:
-                  type: string
-                  enum:
-                  - Credit
-                  - Debit
-                  description: Tipo de movimiento a realizar con la cuenta.
-              required:
-              - code
-              - movement
-            description:
-              type: string
-              description: descripción
-              example: Descripción Crédito
-            value:
-              type: number
-              description: Valor crédito.
-              example: 119000
-          required:
-          - value
-          - value
+      income:
+        type: object
+        properties:
+          id:
+            type: number
+            description: ID del concepto de otros ingresos. Se crea en Siigo Nube y se consulta con la tool
+              de otros ingresos (/v1/misc-incomes).
+            example: 174
+        required:
+        - id
+        description: Concepto de otros ingresos que se relaciona en el recibo de caja.
+      payment:
+        type: object
+        properties:
+          id:
+            type: number
+            description: ID del medio de pago, se consulta en /v1/payment-types?document_type=RC.
+            example: 3720
+          value:
+            type: number
+            description: Valor asociado al medio de pago, máximo 2 decimales.
+            example: 12000
+        required:
+        - id
+        - value
+        description: ID y valor de la forma de pago.
       observations:
         type: string
         description: Comentarios para agregar información al recibo de caja.
-        example: Observaciones
+        example: observación de prueba
     required:
     - document
     - date
     - type
     - customer
+    - income
+    - payment
   ejemplo_peticion:
     document:
       id: 170674
@@ -5819,6 +6090,7 @@ endpoints:
   notas:
   - 'El tipo se indica en el cuerpo con `type: "MiscIncome"` (blueprint); el portal muestra además la
     ruta como /v1/vouchers?type=MiscIncome. El id del ingreso se consulta en /v1/misc-incomes.'
+  - 'Corregido el 2026-11-27: el esquema anterior era el del recibo avanzado (Detailed), que Siigo eliminó.'
 - nombre: listar_tipos_recibo_caja
   recurso: recibos_caja
   metodo: GET
@@ -5826,113 +6098,7 @@ endpoints:
   descripcion: Lista todos los tipos de recibos de caja que se encuentran configurados en Siigo Nube y
     sus características.
   lectura: true
-  parametros:
-  - nombre: id
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Identificador de la recibo de caja.
-  - nombre: document.id
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Identificador del comprobante, se puede consultar en https://api.siigo.com/v1/document-types?type=RC.
-  - nombre: number
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Consecutivo/número del comprobante, el campo es obligatorio según la configuración del
-      tipo de comprobante.
-  - nombre: name
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: 'Tipo de Comprobante + Código de Comprobante + Número de Comprobante. Por ejemplo: RC-1-22'
-  - nombre: date
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Fecha de la recepción de pago, formato yyyy-MM-dd.
-  - nombre: customer.id
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Serial identificador del cliente.
-  - nombre: customer.identification
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Número de identificación del cliente.
-  - nombre: customer.branch_office
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Sucursal, valor por default 0.
-  - nombre: items.taxes.id
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Identificador único del impuesto.
-  - nombre: items.taxes.name
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Nombre del impuesto.
-  - nombre: items.taxes.percentage
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Porcentaje de impuesto del relacionado
-  - nombre: items.taxes.base
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Base del impuesto relacionado.
-  - nombre: items.taxes.value
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Valor de impuesto del relacionado
-  - nombre: items.discounts.id
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Identificador único del descuento.
-  - nombre: items.discounts.name
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Nombre del descuento.
-  - nombre: items.discounts.value
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Valor de descuento del relacionado.
-  - nombre: payments.id
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: ID del medio de pago.
-  - nombre: payments.name
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Nombre del medio de pago.
-  - nombre: payments.value
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Valor asociado al medio de pago.
-  - nombre: cost_center
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Indica el Centro de costo del recibo de caja.
-  - nombre: observations
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Comentarios para agregar información al recibo de caja.
+  parametros: []
   doc: 18_recibos_caja.md
   fuentes:
   - apiary
@@ -6431,58 +6597,7 @@ endpoints:
   descripcion: Lista todos los tipos de recibos de pago/egreso que se encuentran configurados en Siigo
     Nube y sus características.
   lectura: true
-  parametros:
-  - nombre: id
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Identificador de el recibo de pago/egreso.
-  - nombre: code
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Codigo del tipo de recibo de pago/egreso.
-  - nombre: name
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Nombre interno para identificar el comprobante de recibo de pago/egreso.
-  - nombre: description
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Descripción del nombre de el recibo de pago/egreso.
-  - nombre: active
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si el recibo de pago/egreso esta activa o no.
-  - nombre: cost_center
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si se pueden manejar centros de costo o no en este tipo de recibo de pago/egreso.
-  - nombre: cost_center_mandatory
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si se maneja centro de costo de forma obligatoria en este tipo de recibo de pago/egreso.
-  - nombre: cost_center_default
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si se maneja un centro de costos por defecto en el tipo de recibo de pago/egreso.
-  - nombre: automatic_number
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si se maneja numeración automática o no en este tipo de recibo de pago/egreso,
-      si es false, en la creación de recibo de pago/egreso usando este tipo, se debe enviar el campo "number".
-  - nombre: consecutive
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Número del próximo consecutivo de el recibo de pago/egreso.
+  parametros: []
   doc: 19_recibos_pago.md
   fuentes:
   - apiary
@@ -6805,59 +6920,7 @@ endpoints:
   descripcion: Lista todos los tipos de comprobantes contables que se encuentran configurados en Siigo
     Nube y sus características.
   lectura: true
-  parametros:
-  - nombre: id
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Identificador del comprobante contable.
-  - nombre: code
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Codigo del tipo de comprobante contable.
-  - nombre: name
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Nombre interno para identificar el comprobante contable.
-  - nombre: description
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Descripción del nombre del comprobante contable.
-  - nombre: active
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si el comprobante contable esta activa o no.
-  - nombre: cost_center
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si se pueden manejar centros de costo o no en este tipo de comprobante contable.
-  - nombre: cost_center_mandatory
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si se maneja centro de costo de forma obligatoria en este tipo de comprobante
-      contable.
-  - nombre: cost_center_default
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si se maneja un centro de costos por defecto en el tipo de comprobante contable.
-  - nombre: automatic_number
-    en: query
-    tipo: string
-    obligatorio: false
-    descripcion: Indica si se maneja numeración automática o no en este tipo de comprobante contable,
-      si es false, en la creación de comprobante contable usando este tipo, se debe enviar el campo "number".
-  - nombre: consecutive
-    en: query
-    tipo: integer
-    obligatorio: false
-    descripcion: Número del próximo consecutivo del comprobante contable.
+  parametros: []
   doc: 20_comprobantes_contables.md
   fuentes:
   - apiary
@@ -7035,6 +7098,7 @@ endpoints:
       stock_updated: string
   notas:
   - Solo documentado en el portal de desarrolladores.
+  - Sin verificar contra Siigo real (decisión A9 del 2026-11-27: solo pruebas con el servidor simulado).
 - nombre: generar_balance_prueba
   recurso: reportes
   metodo: POST
@@ -7445,6 +7509,7 @@ endpoints:
     name: Ajuste al peso
   notas:
   - El blueprint escribe /v1/expense; el portal y las novedades usan /v1/expenses.
+  - Sin verificar contra Siigo real (decisión A9 del 2026-11-27: solo pruebas con el servidor simulado).
 - nombre: listar_otros_ingresos
   recurso: otros_catalogos
   metodo: GET
@@ -7464,6 +7529,7 @@ endpoints:
     name: 42950502 - Ingresos ocasionales por ajuste de cartera/proveedor
   notas:
   - Solo documentado en el portal de desarrolladores.
+  - Sin verificar contra Siigo real (decisión A9 del 2026-11-27: solo pruebas con el servidor simulado).
 - nombre: listar_activos_fijos
   recurso: activos_fijos
   metodo: GET
