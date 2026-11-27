@@ -267,6 +267,25 @@ _STRINGS: dict[str, dict[Language, str]] = {
         "en": "Similar = the same action ({title}) from the same AI app connection.",
         "es": "Similar = la misma acción ({title}) desde la misma conexión de la app de IA.",
     },
+    # Risk levels (API coverage plan, decisions A2-A4 of 2026-11-27)
+    "approval.banner.permanent": {
+        "en": "CAN'T BE UNDONE. This deletes or annuls a real record in Siigo. Check the "
+        "record below before you approve.",
+        "es": "NO SE PUEDE DESHACER. Esto borra o anula un registro real en Siigo. Revise "
+        "el registro antes de aprobar.",
+    },
+    "approval.banner.outbound": {
+        "en": "SENDS DATA OUTSIDE SIIGO. Check every email address or URL below. Approve "
+        "only addresses you know.",
+        "es": "ENVÍA DATOS FUERA DE SIIGO. Revise cada correo o URL. Apruebe solo "
+        "direcciones que usted conozca.",
+    },
+    "approval.one_by_one": {
+        "en": 'This kind of write is approved one at a time: "approve similar writes" '
+        "and automatic approval don't cover it.",
+        "es": 'Este tipo de escritura se aprueba una por una: "aprobar escrituras '
+        'similares" y la aprobación automática no la cubren.',
+    },
     "notify.approval.title": {"en": "Approval needed", "es": "Se necesita aprobación"},
     "notify.approval.body": {
         "en": "{client} wants to run {title} in Siigo. Open the window to approve or reject.",

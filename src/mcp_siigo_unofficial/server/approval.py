@@ -18,6 +18,12 @@ here have no Qt:
 
 If nobody can show the window (no tray app, no UI), the answer is
 :attr:`Outcome.UNAVAILABLE` and nothing is sent to Siigo.
+
+Risk levels (API coverage plan, decisions A2-A4 of 2026-11-27): only plain creates and
+updates (:attr:`Risk.CHANGE`) can be approved by "similar writes" or automatic
+approval. Writes that can't be undone (:attr:`Risk.PERMANENT`) and writes that send
+data outside Siigo (:attr:`Risk.OUTBOUND`) are approved one by one. The tray app
+takes the risk level from its own catalog, so a request can't lower it.
 """
 
 from __future__ import annotations
@@ -34,6 +40,8 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
 import httpx2
+
+from mcp_siigo_unofficial.server.catalog import Risk, risk_of
 
 log = logging.getLogger(__name__)
 
@@ -123,6 +131,7 @@ class ApprovalRequest:
     connection: str
     timeout_s: float = APPROVAL_TIMEOUT_S
     id: str = field(default_factory=lambda: secrets.token_urlsafe(9))
+    risk: Risk = Risk.CHANGE
 
     def to_json(self) -> dict[str, Any]:
         data = asdict(self)
@@ -132,8 +141,9 @@ class ApprovalRequest:
     @classmethod
     def from_json(cls, data: dict[str, Any]) -> ApprovalRequest:
         summary = [(str(k), str(v)) for k, v in data.get("summary", [])]
+        tool = str(data["tool"])
         return cls(
-            tool=str(data["tool"]),
+            tool=tool,
             title=str(data["title"]),
             method=str(data["method"]),
             url=str(data["url"]),
@@ -144,6 +154,8 @@ class ApprovalRequest:
             connection=str(data.get("connection") or "?"),
             timeout_s=min(float(data.get("timeout_s", APPROVAL_TIMEOUT_S)), APPROVAL_TIMEOUT_S),
             id=str(data.get("id") or secrets.token_urlsafe(9)),
+            # The tray's own catalog decides; a request can only make it stricter.
+            risk=Risk.strictest(Risk.parse(data.get("risk", "change")), risk_of(tool)),
         )
 
 
@@ -243,7 +255,12 @@ class ApprovalBroker:
                 log.exception("Approval event could not be recorded")
 
     def preapproved(self, request: ApprovalRequest) -> Outcome | None:
-        """AUTOMATIC (uses one of the writes left) or GRANTED, else None."""
+        """AUTOMATIC (uses one of the writes left) or GRANTED, else None.
+
+        Permanent and outbound writes are never pre-approved, and don't use up a write.
+        """
+        if not request.risk.allows_shortcuts:
+            return None
         if self.automatic() is not None:
             ended: Automatic | None = None
             with self._lock:
@@ -335,9 +352,11 @@ class ApprovalBroker:
         finally:
             with self._lock:
                 self._pending.pop(request.id, None)
-        if decision is Decision.APPROVE_SIMILAR:
+        if decision is Decision.APPROVE_SIMILAR and request.risk.allows_shortcuts:
             self._start_grant(request)
             return Outcome.APPROVED_SIMILAR
+        if decision is Decision.APPROVE_SIMILAR:  # no grant for risky writes
+            return Outcome.APPROVED
         if decision is Decision.APPROVE:
             return Outcome.APPROVED
         return Outcome.REJECTED
@@ -440,15 +459,23 @@ class RemoteApprover:
             return None
 
 
-def summarize(path_values: dict[str, str], body: Any, limit: int = 6) -> list[tuple[str, str]]:
-    """Main fields for the window (W7): path ids, then simple body fields."""
+def summarize(
+    path_values: dict[str, str], body: Any, limit: int = 6, *, full: bool = False
+) -> list[tuple[str, str]]:
+    """Main fields for the window (W7): path ids, then simple body fields.
+
+    ``full`` (writes that send data outside Siigo) keeps every simple field whole, so
+    the person sees each email address and URL exactly.
+    """
     pairs: list[tuple[str, str]] = [(k, v) for k, v in path_values.items() if v]
+    if full:
+        limit = max(limit, 12)
     if isinstance(body, dict):
         for key, value in body.items():
             if len(pairs) >= limit:
                 break
             if isinstance(value, str | int | float | bool) and value != "":
-                pairs.append((key, _short(str(value))))
+                pairs.append((key, str(value) if full else _short(str(value))))
             elif isinstance(value, dict):
                 ident = value.get("identification") or value.get("code") or value.get("id")
                 if ident is not None:
