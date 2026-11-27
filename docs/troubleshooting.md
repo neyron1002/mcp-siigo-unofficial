@@ -16,7 +16,7 @@ It prints a report; each check has `"ok": true` or an error.
 
 ## The app closes at start on Windows ("Unable to configure formatter 'default'")
 
-Versions 0.2.0 and 0.2.1-rc.1 close at start on Windows with a window that ends in `ValueError: Unable to configure formatter 'default'`. The app has no console window, and the server's logging setup needed one. Version 0.2.1-rc.2 (a pre-release) and later fix it: download it from the [releases page](https://github.com/neyron1002/mcp-siigo-unofficial/releases) and run it; it installs over the old version and keeps your settings.
+Versions 0.2.0 and 0.2.1-rc.1 close at start on Windows with a window that ends in `ValueError: Unable to configure formatter 'default'`. The app has no console window, and the server's logging setup needed one. Version 0.3.0-rc.1 (a pre-release) and later fix it: download it from the [releases page](https://github.com/neyron1002/mcp-siigo-unofficial/releases) and run it; it installs over the old version and keeps your settings.
 
 If the app still closes or shows "MCP server stopped", open `logs\app.log` in the app folder ([Where your data is](usage.md#where-your-data-is)) and add its last lines to your report.
 
@@ -66,6 +66,9 @@ Every write waits for your answer in the Siigo approval window ([Approval window
 
 - **401 or "invalid credentials":** check the API username and access key in Settings (Siigo Nube → Alianzas → Mi Credencial API), then **Test connection**.
 - **429 "too many requests":** Siigo limits the request rate. The app waits and retries automatically (up to 2 times). Ask the AI to request fewer pages at a time.
+- **"record_not_readable" on a delete or annul:** the app reads the record first, to show it in the approval window, and Siigo didn't return it (wrong id, already deleted, or no permission). Nothing was asked or sent. Check the id with a read tool.
+- **A webhook or email was refused before the approval window:** webhook URLs must start with `https://`, and an invoice email can go to at most 5 addresses.
+- **Siigo refuses to delete, annul, or edit an invoice:** Siigo doesn't allow it after the invoice is sent to the DIAN (it has a CUFE) or when other documents are linked to it. Use a credit note instead.
 - **A create returned a document that already existed:** this is the [duplicate protection](usage.md#duplicate-protection). The same invoice, credit note, journal, or cash receipt content was sent before, so Siigo returned the first one. Change something small (for example the observations) to create a new one.
 - **DIAN errors on an invoice:** use the read tool `siigo_get_invoice_dian_errors` to see why the DIAN rejected it.
 
