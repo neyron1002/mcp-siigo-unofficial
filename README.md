@@ -63,7 +63,7 @@ A single downloadable file per operating system (Windows 10/11 x64, macOS 13+ on
 | 8 Connect window | Connect AI apps window, tray AI apps menu, new-app notifications, Restart Claude Desktop |
 | 9 Docs + v0.2.0 | One-click guides and the v0.2.0 release |
 | New icon (v0.2.0) | A cloud with an arch bridge made of the letters "ii" |
-| 10 Catalog refresh (v0.2.1) | Tool schemas follow the Siigo docs of 2026-11-27 (health sector, Combo products, cash receipts), duplicate protection, catalog source in the repository |
+| 10 Catalog refresh (v0.2.1-rc.1) | Tool schemas follow the Siigo docs of 2026-11-27 (health sector, Combo products, cash receipts), duplicate protection, catalog source in the repository |
 | 11–15 Full API coverage (v0.3.0) | Risk levels in the approval flow, then 22 new write tools: quotations, purchase invoices, support documents, payment receipts, inventory categories, invoice edit, annul, delete, and email, and webhooks |
 
 Each phase, its checks, and every deviation from the plan are recorded in the execution logs: [phases 0–6](prompts/2026.11.18_unattended_execution/2026.11.18_execution_log.md), [write approval](prompts/2026.11.19_write_approval_bug/2026.11.19_execution_log.md), [one-click connection](prompts/2026.11.19_one_click_client_install/2026.11.19_execution_log.md), and [API coverage](prompts/2026.11.27_api_coverage/2026.11.27_execution_log.md).
