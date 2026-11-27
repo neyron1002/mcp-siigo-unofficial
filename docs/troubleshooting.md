@@ -60,6 +60,7 @@ Every write waits for your answer in the Siigo approval window ([Approval window
 
 - **401 or "invalid credentials":** check the API username and access key in Settings (Siigo Nube → Alianzas → Mi Credencial API), then **Test connection**.
 - **429 "too many requests":** Siigo limits the request rate. The app waits and retries automatically (up to 2 times). Ask the AI to request fewer pages at a time.
+- **A create returned a document that already existed:** this is the [duplicate protection](usage.md#duplicate-protection). The same invoice, credit note, journal, or cash receipt content was sent before, so Siigo returned the first one. Change something small (for example the observations) to create a new one.
 - **DIAN errors on an invoice:** use the read tool `siigo_get_invoice_dian_errors` to see why the DIAN rejected it.
 
 ## The vault cannot be opened
