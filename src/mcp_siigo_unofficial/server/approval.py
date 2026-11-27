@@ -485,5 +485,42 @@ def summarize(
     return pairs[:limit]
 
 
+#: Fields shown for a record that a permanent write will delete or annul (phase 13).
+RECORD_FIELDS = (
+    "name",
+    "code",
+    "number",
+    "date",
+    "customer",
+    "supplier",
+    "total",
+    "balance",
+    "description",
+    "topic",
+    "url",
+)
+
+
+def record_summary(record_id: str, record: Any, limit: int = 8) -> list[tuple[str, str]]:
+    """What the window shows before a delete or annul: the record as Siigo has it now."""
+    pairs: list[tuple[str, str]] = [("id", record_id)]
+    if not isinstance(record, dict):
+        return pairs
+    for key in RECORD_FIELDS:
+        if len(pairs) >= limit:
+            break
+        value = record.get(key)
+        if isinstance(value, dict):
+            name = value.get("name")
+            if isinstance(name, list):
+                name = " ".join(str(part) for part in name if part)
+            parts = [str(p) for p in (name, value.get("identification")) if p]
+            value = " · ".join(parts)
+        if value is None or value == "" or isinstance(value, list | dict):
+            continue
+        pairs.append((key, _short(str(value))))
+    return pairs
+
+
 def _short(text: str, limit: int = 80) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"

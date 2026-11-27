@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import dataclasses
 import inspect
 import json
 import logging
@@ -41,6 +42,7 @@ from mcp_siigo_unofficial.server.approval import (
     Approver,
     Outcome,
     UnavailableApprover,
+    record_summary,
     summarize,
 )
 from mcp_siigo_unofficial.server.catalog import Catalog, EndpointTool, Risk, load_catalog
@@ -438,6 +440,9 @@ class SiigoMCPServer(MCPServer[Any]):
             approval: ElicitationResult[Approval], ctx: Context[Any, Any], **kwargs: Any
         ) -> str:
             request = self._approval_request(endpoint, kwargs, ctx)
+            if endpoint.risk is Risk.PERMANENT:  # show the record as Siigo has it now
+                summary = await self._record_summary(endpoint, kwargs)
+                request = dataclasses.replace(request, summary=summary)
             asked_at = self._asked_at.pop(self._asked_key(endpoint, kwargs, ctx), None)
             if isinstance(approval, AcceptedElicitation):
                 data = approval.data
@@ -467,6 +472,54 @@ class SiigoMCPServer(MCPServer[Any]):
             return await self._execute(endpoint, kwargs, approved_via=outcome.value)
 
         return write_tool
+
+    async def _record_summary(
+        self, endpoint: EndpointTool, kwargs: dict[str, Any]
+    ) -> list[tuple[str, str]]:
+        """Read the record a delete or annul will affect, for the approval window.
+
+        If it can't be read, nothing is asked and nothing is sent.
+        """
+        try:
+            path = endpoint.build_path(kwargs)
+        except ValueError as exc:
+            raise _tool_error({"code": "invalid_arguments", "message": str(exc)}) from exc
+        record_path = path.removesuffix("/annul")
+        record_id = record_path.rsplit("/", 1)[-1]
+        try:
+            if record_path.startswith("/v1/webhooks/"):  # no GET by id: find it in the list
+                data = await self.siigo.request("GET", "/v1/webhooks")
+                items = data.get("results", []) if isinstance(data, dict) else data
+                record = next(
+                    (
+                        item
+                        for item in items or []
+                        if isinstance(item, dict) and str(item.get("id")) == record_id
+                    ),
+                    None,
+                )
+                if record is None:
+                    raise SiigoError(
+                        f"The webhook subscription {record_id} does not exist.",
+                        status=404,
+                        code="not_found",
+                        method="GET",
+                        path="/v1/webhooks",
+                    )
+            else:
+                record = await self.siigo.request("GET", record_path)
+        except SiigoError as exc:
+            raise _tool_error(
+                {
+                    "code": "record_not_readable",
+                    "message": (
+                        f"Could not read {record_path} to show it to the user before "
+                        f"{endpoint.name}. Nothing was asked and nothing was sent."
+                    ),
+                    "siigo": exc.to_dict(),
+                }
+            ) from exc
+        return record_summary(record_id, record)
 
     def _approval_request(
         self, endpoint: EndpointTool, kwargs: dict[str, Any], ctx: Context[Any, Any]
