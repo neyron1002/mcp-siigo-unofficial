@@ -55,7 +55,25 @@ When an AI app asks for a write, the app opens a window on top of your other win
 | **Notification first** | A notification. Click it to open the window; otherwise the window opens by itself after 15 seconds. | The 2-minute limit counts from the notification. |
 | **In the AI app** | The AI app's own Approve/Reject question (MCP elicitation), with no Siigo window. | Works in apps that really show the question (Claude Code in a terminal). Some apps (Claude Desktop) answer "decline" by themselves in about a millisecond: a decline faster than 1 second is treated as "the app couldn't ask", and the Siigo window opens instead. A slower "no" is your rejection. |
 
-"Approve similar writes" and automatic approval work in every mode: when one of them covers a write, nobody is asked.
+"Approve similar writes" and automatic approval work in every mode: when one of them covers a write, nobody is asked. The exception is risky writes ([below](#risky-writes)).
+
+### Risky writes
+
+Some writes are riskier than creating or changing a record, so they have stricter rules:
+
+| Kind | Examples | How you approve it |
+|---|---|---|
+| **Create or update** | Create an invoice, update a customer | The rules above. |
+| **Can't be undone** | Delete a record, annul an invoice | Only in the **Siigo window**, one at a time, even in "In the AI app" mode. The window has a red banner and shows the record as Siigo has it now (name, number, date, customer, total). If the app can't read the record, it asks nothing and sends nothing. |
+| **Sends data outside Siigo** | Email an invoice, create a webhook | In your chosen mode, one at a time. The window has an amber banner and shows every email address and URL in full. |
+
+"Approve similar writes" and automatic approval never cover the two risky kinds, and the window has no "Approve similar writes" button for them. The app takes the kind from its own tool list, so an AI app can't make a write look safer than it is.
+
+### Duplicate protection
+
+Creating a sales invoice, credit note, journal, or cash receipt sends Siigo an `Idempotency-Key` made from the request content. If an AI app sends exactly the same document again (for example after a slow answer or a timeout), Siigo returns the document it created the first time and creates nothing new. Each write still needs your approval.
+
+To create two identical documents on purpose, ask the AI to change something small in the second one, such as the observations.
 
 ### Automatic approval
 

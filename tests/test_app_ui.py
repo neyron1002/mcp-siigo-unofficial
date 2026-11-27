@@ -603,3 +603,31 @@ def test_settings_saves_the_approval_mode(
 def test_selftest_offline(qapp: QApplication, capsys: pytest.CaptureFixture[str]) -> None:
     assert run_selftest(offline=True) == 0
     assert '"ok": true' in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("risk", ["permanent", "outbound"])
+def test_approval_window_for_risky_writes(qapp: QApplication, tr: Translator, risk: str) -> None:
+    from mcp_siigo_unofficial.server.catalog import Risk
+
+    answers: list[Decision] = []
+    window = ApprovalWindow(approval_request(risk=Risk(risk)), tr, lambda rid, d: answers.append(d))
+    window.bring_to_front()
+    assert window.banner is not None
+    assert window.banner.isVisible()
+    assert window.banner.text() == tr(f"approval.banner.{risk}")
+    assert not window.similar_button.isVisible()
+    assert not window.similar_button.isEnabled()
+    assert window.similar_hint.text() == tr("approval.one_by_one")
+    assert window.reject_button.isDefault()
+    window.approve_button.click()
+    assert answers == [Decision.APPROVE]
+
+
+def test_approval_window_for_plain_changes_has_no_banner(
+    qapp: QApplication, tr: Translator
+) -> None:
+    window = ApprovalWindow(approval_request(), tr, lambda rid, d: None)
+    window.bring_to_front()
+    assert window.banner is None
+    assert window.similar_button.isVisible()
+    window.close()

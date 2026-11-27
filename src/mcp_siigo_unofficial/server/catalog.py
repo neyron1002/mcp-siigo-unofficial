@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 import json
 import re
 from dataclasses import dataclass, field
@@ -10,6 +11,37 @@ from importlib import resources
 from typing import Any, Literal
 
 ParamType = Literal["string", "integer", "number", "boolean", "array", "object"]
+
+
+class Risk(enum.StrEnum):
+    """How much a write can hurt (API coverage plan, Part 3; decisions A2-A4)."""
+
+    CHANGE = "change"  # create or update: today's approval rules
+    OUTBOUND = "outbound"  # sends data outside Siigo (email, webhooks)
+    PERMANENT = "permanent"  # can't be undone (delete, annul)
+
+    @property
+    def allows_shortcuts(self) -> bool:
+        """Only plain changes may be approved by "similar writes" or automatic approval."""
+        return self is Risk.CHANGE
+
+    @property
+    def needs_window(self) -> bool:
+        """Permanent writes are approved only in the Siigo window, never in the AI app."""
+        return self is Risk.PERMANENT
+
+    @classmethod
+    def parse(cls, value: object) -> Risk:
+        """Unknown values get the strictest level."""
+        try:
+            return cls(str(value))
+        except ValueError:
+            return cls.PERMANENT
+
+    @classmethod
+    def strictest(cls, *levels: Risk) -> Risk:
+        order = (cls.CHANGE, cls.OUTBOUND, cls.PERMANENT)
+        return max(levels, key=order.index)
 
 
 @dataclass(frozen=True)
@@ -41,6 +73,7 @@ class EndpointTool:
     body_schema: dict[str, Any] | None = None
     request_example: Any = None
     notes: tuple[str, ...] = ()
+    risk: Risk = Risk.CHANGE
 
     @property
     def path_params(self) -> tuple[Param, ...]:
@@ -111,9 +144,18 @@ def _parse(data: dict[str, Any]) -> Catalog:
                 body_schema=raw.get("body_schema"),
                 request_example=raw.get("request_example"),
                 notes=tuple(raw.get("notes") or ()),
+                risk=Risk.parse(raw.get("risk", Risk.CHANGE.value)),
             )
         )
     return Catalog(data["base_url"], data["source_version"], tuple(tools))
+
+
+def risk_of(tool: str) -> Risk:
+    """The shipped catalog's risk level for a write tool (strictest if unknown)."""
+    try:
+        return load_catalog().get(tool).risk
+    except KeyError:
+        return Risk.PERMANENT
 
 
 @cache

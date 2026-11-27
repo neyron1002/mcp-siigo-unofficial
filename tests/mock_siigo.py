@@ -25,10 +25,20 @@ from typing import Any
 import httpx2
 
 PARTNER_ID = re.compile(r"^[A-Za-z0-9]{3,100}$")
+IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9]{1,30}$")
 TEST_USERNAME = "sandbox@example.com"
 TEST_ACCESS_KEY = "dGVzdC1hY2Nlc3Mta2V5LW5vdC1yZWFs"
 
-RESOURCES = ("customers", "products", "invoices")
+RESOURCES = (
+    "customers",
+    "products",
+    "invoices",
+    "quotations",
+    "purchases",
+    "purchase-support-documents",
+    "payment-receipts",
+    "account-groups",
+)
 CATALOGS: dict[str, list[dict[str, Any]]] = {
     "taxes": [{"id": 13156, "name": "IVA 19%", "type": "IVA", "percentage": 19, "active": True}],
     "payment-types": [{"id": 5636, "name": "Contado", "type": "ElectronicInvoice"}],
@@ -74,6 +84,7 @@ class MockSiigo:
         self.data: dict[str, dict[str, dict[str, Any]]] = {r: {} for r in RESOURCES}
         self._lock = threading.Lock()
         self._invoice_number = 0
+        self.idempotency: dict[tuple[str, str], str] = {}
 
     # ------------------------------------------------------------------ test helpers
     def expire_tokens(self) -> None:
@@ -127,6 +138,12 @@ class MockSiigo:
         resource = parts[0]
         if resource in CATALOGS and len(parts) == 1 and request.method == "GET":
             return httpx2.Response(200, json=CATALOGS[resource])
+        if resource == "invoices" and len(parts) == 3 and parts[2] == "annul":
+            invoice = self.data["invoices"].get(parts[1])
+            if request.method != "POST" or invoice is None:
+                return self._not_found(parts[1])
+            invoice["annulled"] = True
+            return httpx2.Response(200, json={"id": parts[1], "Annul": True})
         if resource not in RESOURCES or len(parts) > 2:
             return siigo_error(404, "not_found", "Resource not found.")
         item_id = parts[1] if len(parts) == 2 else None
@@ -164,7 +181,19 @@ class MockSiigo:
             body = json.loads(request.content or b"{}")
             if not isinstance(body, dict) or not body:
                 return siigo_error(400, "invalid_type", "The request body is required.")
-            return httpx2.Response(201, json=self._create(resource, body))
+            key = request.headers.get("Idempotency-Key")
+            if key is not None:
+                if not IDEMPOTENCY_KEY.fullmatch(key):
+                    return siigo_error(
+                        400, "invalid_idempotency-key", "The Idempotency-Key is invalid."
+                    )
+                earlier = self.idempotency.get((resource, key))
+                if earlier is not None:  # Siigo returns the document created before
+                    return httpx2.Response(200, json=store[earlier])
+            item = self._create(resource, body)
+            if key is not None:
+                self.idempotency[(resource, key)] = item["id"]
+            return httpx2.Response(201, json=item)
         if method == "PUT" and item_id is not None:
             if item_id not in store:
                 return self._not_found(item_id)

@@ -142,8 +142,31 @@ def test_catalog_scope() -> None:
         "siigo_create_voucher",
         "siigo_create_voucher_misc_income",
         "siigo_create_journal",
+        # Phase 12 (API coverage plan)
+        "siigo_create_account_group",
+        "siigo_update_account_group",
+        "siigo_update_invoice",
+        "siigo_create_quotation",
+        "siigo_update_quotation",
+        "siigo_create_purchase",
+        "siigo_update_purchase",
+        "siigo_create_support_document",
+        "siigo_update_support_document",
+        "siigo_create_payment_receipt",
+        "siigo_create_payment_receipt_detailed",
+        # Phase 13: delete and annul
+        "siigo_delete_product",
+        "siigo_delete_invoice",
+        "siigo_annul_invoice",
+        "siigo_delete_quotation",
+        "siigo_delete_purchase",
+        "siigo_delete_support_document",
+        "siigo_delete_payment_receipt",
     } == WRITE_NAMES
-    assert not any(t.method == "DELETE" for t in CATALOG.tools)
+    permanent = {t.name for t in CATALOG.write_tools if t.risk.value == "permanent"}
+    assert permanent == {t.name for t in CATALOG.tools if t.method == "DELETE"} | {
+        "siigo_annul_invoice"
+    }
     assert all(t.path.startswith("/v1/") for t in CATALOG.tools)
 
 
@@ -178,7 +201,11 @@ async def test_annotations_and_write_warnings(server: SiigoMCPServer, switch: Wr
         assert "ctx" not in tool.input_schema["properties"]
         assert "approval" not in tool.input_schema["properties"]
         assert "approval window" in (tool.description or "")
-        assert "body" in tool.input_schema["required"]
+        if CATALOG.get(name).body_schema is not None:
+            assert "body" in tool.input_schema["required"]
+        else:  # delete and annul take only the record id
+            assert "body" not in tool.input_schema["properties"]
+            assert tool.input_schema["required"] == ["id"]
 
 
 async def test_instructions_carry_the_liability_statement(server: SiigoMCPServer) -> None:
@@ -628,3 +655,352 @@ def test_follow_vault_switch_reads_the_tray_state(vault: Vault, switch: WriteSwi
     assert follower.enabled is True
     with pytest.raises(Exception, match="tray"):
         follower.disable()
+
+
+# ---------------------------------------------------------------------- Idempotency-Key (A6)
+
+
+def idempotency_keys(mock: MockSiigo) -> list[str | None]:
+    return [
+        r.headers.get("Idempotency-Key")
+        for r in mock.requests
+        if r.method == "POST" and r.url.path.startswith("/v1/")
+    ]
+
+
+async def test_same_invoice_twice_creates_one_document(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo, vault: Vault
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    async with Client(server) as client:
+        first = payload(await client.call_tool("siigo_create_invoice", {"body": INVOICE}))
+        again = payload(await client.call_tool("siigo_create_invoice", {"body": INVOICE}))
+        other = payload(
+            await client.call_tool(
+                "siigo_create_invoice", {"body": {**INVOICE, "observations": "second one"}}
+            )
+        )
+    assert again["id"] == first["id"]
+    assert other["id"] != first["id"]
+    assert len(mock_siigo.data["invoices"]) == 2
+    keys = idempotency_keys(mock_siigo)
+    assert len(keys) == 3
+    assert keys[0] == keys[1] != keys[2]
+    assert all(k is not None and k.isalnum() and len(k) == 30 for k in keys)
+    logged = [e.detail.get("idempotency_key") for e in vault.events("write.executed")]
+    assert logged == keys
+
+
+async def test_no_idempotency_key_where_siigo_does_not_accept_it(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    async with Client(server) as client:
+        await client.call_tool("siigo_create_customer", {"body": {"identification": "1"}})
+    assert idempotency_keys(mock_siigo) == [None]
+
+
+async def test_idempotent_tools_explain_duplicate_protection(server: SiigoMCPServer) -> None:
+    from mcp_siigo_unofficial.server import idempotency
+
+    with_note = {
+        t.name for t in load_catalog().write_tools if idempotency.applies(t.method, t.path)
+    }
+    assert with_note == {
+        "siigo_create_invoice",
+        "siigo_create_credit_note",
+        "siigo_create_journal",
+        "siigo_create_voucher",
+        "siigo_create_voucher_misc_income",
+    }
+    for tool in load_catalog().write_tools:
+        description = app_module._describe(tool)
+        assert (idempotency.NOTE in description) == (tool.name in with_note)
+
+
+def test_idempotency_key_ignores_field_order() -> None:
+    from mcp_siigo_unofficial.server import idempotency
+
+    a = idempotency.key_for("/v1/invoices", {"date": "2026-11-27", "seller": 1})
+    b = idempotency.key_for("/v1/invoices", {"seller": 1, "date": "2026-11-27"})
+    assert a == b
+    assert a != idempotency.key_for("/v1/credit-notes", {"date": "2026-11-27", "seller": 1})
+    assert idempotency.headers_for("PUT", "/v1/invoices", {"x": 1}) == {}
+
+
+# ---------------------------------------------------------------------- risk levels (A2-A4)
+
+
+def risky_catalog() -> Any:
+    """The shipped catalog plus one permanent and one outbound tool (phase 11 has none yet)."""
+    import dataclasses
+
+    from mcp_siigo_unofficial.server.catalog import EndpointTool, Param, Risk
+
+    shipped = load_catalog()
+    id_param = Param("id", "path", "string", True, "Record id.")
+    delete = EndpointTool(
+        name="siigo_delete_product",
+        title="Delete product",
+        method="DELETE",
+        path="/v1/products/{id}",
+        read_only=False,
+        description="Borrar un producto.",
+        params=(id_param,),
+        risk=Risk.PERMANENT,
+    )
+    mail = EndpointTool(
+        name="siigo_send_invoice_email",
+        title="Send invoice email",
+        method="POST",
+        path="/v1/invoices/{id}/mail",
+        read_only=False,
+        description="Enviar factura por correo.",
+        params=(id_param,),
+        body_schema={"type": "object", "properties": {"mail_to": {"type": "string"}}},
+        risk=Risk.OUTBOUND,
+    )
+    return dataclasses.replace(shipped, tools=(*shipped.tools, delete, mail))
+
+
+@pytest.fixture
+async def risky_server(
+    mock_siigo: MockSiigo,
+    credentials: SiigoCredentials,
+    switch: WriteSwitch,
+    vault: Vault,
+    approver: ScriptedApprover,
+    mode_setting: Mode,
+) -> AsyncIterator[SiigoMCPServer]:
+    siigo = SiigoClient(
+        lambda: credentials, base_url="https://api.siigo.test", transport=mock_siigo.transport()
+    )
+    async with siigo:
+        yield SiigoMCPServer(
+            siigo,
+            switch,
+            catalog=risky_catalog(),
+            vault=vault,
+            approver=approver,
+            approval_mode=mode_setting,
+        )
+
+
+async def test_permanent_writes_skip_the_ai_app_question(
+    risky_server: SiigoMCPServer,
+    switch: WriteSwitch,
+    mock_siigo: MockSiigo,
+    approver: ScriptedApprover,
+    mode_setting: Mode,
+) -> None:
+    from mcp_siigo_unofficial.server.catalog import Risk
+
+    switch.enable(accepted_responsibility=True)
+    mode_setting.value = ApprovalMode.AI_APP
+    (product,) = mock_siigo.seed("products", 1)
+    asked: list[Any] = []
+
+    async def would_accept(context: Any, params: Any) -> ElicitResult:
+        asked.append(params)
+        return ElicitResult(action="accept", content={"approve": True})
+
+    async with Client(risky_server, elicitation_callback=would_accept) as client:
+        result = payload(await client.call_tool("siigo_delete_product", {"id": product["id"]}))
+    assert asked == []  # the AI app is never asked
+    assert [r.risk for r in approver.requests] == [Risk.PERMANENT]  # the Siigo window is
+    assert approver.early_checks == 0  # no shortcut is even checked here
+    assert result == {"id": product["id"], "deleted": True}
+
+
+async def test_outbound_writes_still_use_the_ai_app_mode(
+    risky_server: SiigoMCPServer,
+    switch: WriteSwitch,
+    mode_setting: Mode,
+    approver: ScriptedApprover,
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    mode_setting.value = ApprovalMode.AI_APP
+    asked: list[Any] = []
+
+    async def reject(context: Any, params: Any) -> ElicitResult:
+        asked.append(params)
+        return ElicitResult(action="accept", content={"approve": False})
+
+    address = "customer-with-a-long-name@" + "x" * 90 + ".example.com"
+    async with Client(risky_server, elicitation_callback=reject) as client:
+        result = payload(
+            await client.call_tool(
+                "siigo_send_invoice_email", {"id": "F1", "body": {"mail_to": address}}
+            )
+        )
+    assert result["status"] == "rejected_by_user"
+    assert len(asked) == 1
+    assert address in asked[0].message  # shown whole
+    assert "OUTSIDE SIIGO" in asked[0].message
+    assert approver.requests == []
+
+
+async def test_risky_requests_carry_level_and_full_summary(
+    risky_server: SiigoMCPServer, switch: WriteSwitch, approver: ScriptedApprover
+) -> None:
+    from mcp_siigo_unofficial.server.catalog import Risk
+
+    switch.enable(accepted_responsibility=True)
+    approver.outcome = Outcome.REJECTED
+    address = "a@" + "y" * 120 + ".example.com"
+    async with Client(risky_server) as client:
+        await client.call_tool(
+            "siigo_send_invoice_email", {"id": "F1", "body": {"mail_to": address}}
+        )
+        await client.call_tool("siigo_create_invoice", {"body": INVOICE})
+    mail, invoice = approver.requests
+    assert mail.risk is Risk.OUTBOUND
+    assert ("mail_to", address) in mail.summary
+    assert invoice.risk is Risk.CHANGE
+
+
+async def test_risky_tool_descriptions(risky_server: SiigoMCPServer, switch: WriteSwitch) -> None:
+    switch.enable(accepted_responsibility=True)
+    async with Client(risky_server) as client:
+        tools = {t.name: t.description or "" for t in (await client.list_tools()).tools}
+    assert "CAN'T BE UNDONE" in tools["siigo_delete_product"]
+    assert "OUTSIDE SIIGO" in tools["siigo_send_invoice_email"]
+    assert "CAN'T BE UNDONE" not in tools["siigo_create_invoice"]
+    assert "OUTSIDE SIIGO" not in tools["siigo_create_invoice"]
+
+
+# ---------------------------------------------------------------------- phase 12 tools
+
+
+@pytest.mark.parametrize(
+    ("tool", "resource", "update"),
+    [
+        ("account_group", "account-groups", True),
+        ("quotation", "quotations", True),
+        ("purchase", "purchases", True),
+        ("support_document", "purchase-support-documents", True),
+        ("payment_receipt", "payment-receipts", False),
+        ("payment_receipt_detailed", "payment-receipts", False),
+    ],
+)
+async def test_new_create_and_update_tools_reach_siigo(
+    server: SiigoMCPServer,
+    switch: WriteSwitch,
+    mock_siigo: MockSiigo,
+    approver: ScriptedApprover,
+    tool: str,
+    resource: str,
+    update: bool,
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    async with Client(server) as client:
+        created = payload(await client.call_tool(f"siigo_create_{tool}", {"body": {"x": 1}}))
+        if update:
+            changed = payload(
+                await client.call_tool(
+                    f"siigo_update_{tool}", {"id": created["id"], "body": {"x": 2}}
+                )
+            )
+            assert changed == {"x": 2, "id": created["id"]}
+    assert created["x"] == 1
+    assert posts(mock_siigo)[0] == f"/v1/{resource}"
+    assert len(approver.requests) == (2 if update else 1)  # every write was approved
+
+
+async def test_update_invoice_reaches_siigo(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    (invoice,) = mock_siigo.seed("invoices", 1)
+    async with Client(server) as client:
+        result = payload(
+            await client.call_tool(
+                "siigo_update_invoice", {"id": invoice["id"], "body": {"observations": "new"}}
+            )
+        )
+    assert result == {"observations": "new", "id": invoice["id"]}
+    request = mock_siigo.requests[-1]
+    assert request.method == "PUT"
+    assert "Idempotency-Key" not in request.headers  # only POST creations carry it
+
+
+# ---------------------------------------------------------------------- phase 13: delete, annul
+
+
+@pytest.mark.parametrize(
+    ("tool", "resource"),
+    [
+        ("siigo_delete_product", "products"),
+        ("siigo_delete_invoice", "invoices"),
+        ("siigo_delete_quotation", "quotations"),
+        ("siigo_delete_purchase", "purchases"),
+        ("siigo_delete_support_document", "purchase-support-documents"),
+        ("siigo_delete_payment_receipt", "payment-receipts"),
+    ],
+)
+async def test_delete_shows_the_record_then_deletes(
+    server: SiigoMCPServer,
+    switch: WriteSwitch,
+    mock_siigo: MockSiigo,
+    approver: ScriptedApprover,
+    tool: str,
+    resource: str,
+) -> None:
+    from mcp_siigo_unofficial.server.catalog import Risk
+
+    switch.enable(accepted_responsibility=True)
+    record = mock_siigo._create(resource, {"name": "FV-1-7", "total": 119000, "date": "2026-11-27"})
+    async with Client(server) as client:
+        result = payload(await client.call_tool(tool, {"id": record["id"]}))
+    assert result == {"id": record["id"], "deleted": True}
+    assert record["id"] not in mock_siigo.data[resource]
+    (request,) = approver.requests
+    assert request.risk is Risk.PERMANENT
+    assert request.summary == [
+        ("id", record["id"]),
+        ("name", record["name"]),  # the mock names invoices itself
+        ("date", "2026-11-27"),
+        ("total", "119000"),
+    ]
+
+
+async def test_annul_invoice(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo, approver: ScriptedApprover
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    invoice = mock_siigo._create(
+        "invoices", {"customer": {"identification": "13832081", "name": ["Ana", "Ruiz"]}}
+    )
+    async with Client(server) as client:
+        result = payload(await client.call_tool("siigo_annul_invoice", {"id": invoice["id"]}))
+    assert result == {"id": invoice["id"], "Annul": True}
+    assert mock_siigo.data["invoices"][invoice["id"]]["annulled"] is True
+    assert ("customer", "Ana Ruiz · 13832081") in approver.requests[0].summary
+    annul = mock_siigo.requests[-1]
+    assert annul.url.path.endswith("/annul")
+    assert "Idempotency-Key" not in annul.headers
+
+
+async def test_missing_record_is_never_deleted_or_asked(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo, approver: ScriptedApprover
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    async with Client(server) as client:
+        result = await client.call_tool("siigo_delete_product", {"id": "missing-id"})
+    assert result.is_error
+    assert payload(result)["error"]["code"] == "record_not_readable"
+    assert approver.requests == []
+    assert not any(r.method == "DELETE" for r in mock_siigo.requests)
+
+
+async def test_rejected_delete_sends_nothing(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo, approver: ScriptedApprover
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    approver.outcome = Outcome.REJECTED
+    (product,) = mock_siigo.seed("products", 1)
+    async with Client(server) as client:
+        result = payload(await client.call_tool("siigo_delete_product", {"id": product["id"]}))
+    assert result["status"] == "rejected_by_user"
+    assert product["id"] in mock_siigo.data["products"]
+    assert not any(r.method == "DELETE" for r in mock_siigo.requests)

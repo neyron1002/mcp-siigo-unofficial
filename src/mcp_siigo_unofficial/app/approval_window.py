@@ -27,6 +27,13 @@ from PySide6.QtWidgets import (
 from mcp_siigo_unofficial.app.icons import app_icon
 from mcp_siigo_unofficial.i18n import Translator
 from mcp_siigo_unofficial.server.approval import ApprovalRequest, Decision
+from mcp_siigo_unofficial.server.catalog import Risk
+
+#: Banner colors (text, background): the same red as the tray badge, and an amber.
+BANNER_STYLE: dict[Risk, str] = {
+    Risk.PERMANENT: "color: #FFFFFF; background: #D32F2F; padding: 8px; border-radius: 4px;",
+    Risk.OUTBOUND: "color: #000000; background: #FFC107; padding: 8px; border-radius: 4px;",
+}
 
 AnswerCallback = Callable[[str, Decision], None]
 
@@ -73,6 +80,14 @@ class ApprovalWindow(QDialog):
         headline.setFont(font)
         warning = QLabel(tr("approval.warning"))
         warning.setWordWrap(True)
+        self.banner: QLabel | None = None
+        if request.risk in BANNER_STYLE:
+            self.banner = QLabel(tr(f"approval.banner.{request.risk.value}"))
+            self.banner.setWordWrap(True)
+            self.banner.setStyleSheet(BANNER_STYLE[request.risk])
+            bold = self.banner.font()
+            bold.setBold(True)
+            self.banner.setFont(bold)
 
         form = QFormLayout()
         form.addRow(tr("approval.field.action"), QLabel(request.title))
@@ -92,7 +107,12 @@ class ApprovalWindow(QDialog):
         self.details_button.clicked.connect(self.toggle_details)
 
         self.countdown = QLabel()
-        self.similar_hint = QLabel(tr("approval.similar_hint", title=request.title))
+        shortcuts = request.risk.allows_shortcuts
+        self.similar_hint = QLabel(
+            tr("approval.similar_hint", title=request.title)
+            if shortcuts
+            else tr("approval.one_by_one")
+        )
         self.similar_hint.setWordWrap(True)
 
         self.reject_button = QPushButton(tr("approval.reject"))
@@ -108,9 +128,13 @@ class ApprovalWindow(QDialog):
         buttons.addStretch(1)
         buttons.addWidget(self.similar_button)
         buttons.addWidget(self.approve_button)
+        self.similar_button.setVisible(shortcuts)
+        self.similar_button.setEnabled(shortcuts)
 
         layout = QVBoxLayout(self)
         layout.addWidget(headline)
+        if self.banner is not None:
+            layout.addWidget(self.banner)
         layout.addWidget(warning)
         layout.addLayout(form)
         layout.addWidget(self.details_button, alignment=Qt.AlignmentFlag.AlignLeft)

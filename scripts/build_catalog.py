@@ -1,14 +1,15 @@
-"""Convert the owner's Siigo endpoint catalog (YAML) into the shipped JSON catalog.
+"""Convert the Siigo endpoint catalog (YAML) into the shipped JSON catalog.
 
-Source: ``references/existing_mcp/mcp_siigo/catalogo/endpoints.yaml``, the owner's own
-earlier MCP server (authorship confirmed on 2026-11-18). The ``references/`` folder
-is not in the repository, so the generated file is committed.
+Source: ``scripts/catalog/endpoints.yaml``. It started as the catalog of the owner's own
+earlier MCP server (authorship confirmed on 2026-11-18, MIT) and has been edited by hand in
+this repository since 2026-11-27 (decision A7). It is a development file and is not shipped.
 
-Plan D20: PyYAML is used only here, at development time; the app ships JSON.
+Plan D20: PyYAML is used only here and in the tests (dev dependency group); the app ships
+JSON. ``tests/test_catalog_source.py`` fails when ``catalog.json`` is not rebuilt.
 
 Usage (inside the dev container)::
 
-    uv run --with pyyaml python scripts/build_catalog.py
+    uv run python scripts/build_catalog.py
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SOURCE = ROOT / "references/existing_mcp/mcp_siigo/catalogo/endpoints.yaml"
+DEFAULT_SOURCE = ROOT / "scripts/catalog/endpoints.yaml"
 DEFAULT_OUTPUT = ROOT / "src/mcp_siigo_unofficial/server/catalog.json"
 
 #: Read tools: every safe read endpoint of the source catalog.
@@ -74,8 +75,7 @@ READ_TOOLS: dict[str, str] = {
     "listar_webhooks": "list_webhooks",
 }
 
-#: Write tools: only the scope of plan section 5 (create/update customers and
-#: products; create invoices, credit notes, cash receipts, and journals).
+#: Write tools: plan section 5, extended by the API coverage plan of 2026-11-27.
 WRITE_TOOLS: dict[str, str] = {
     "crear_cliente": "create_customer",
     "actualizar_cliente": "update_customer",
@@ -86,6 +86,38 @@ WRITE_TOOLS: dict[str, str] = {
     "crear_recibo_caja": "create_voucher",
     "crear_recibo_caja_otros_ingresos": "create_voucher_misc_income",
     "crear_comprobante_contable": "create_journal",
+    # Phase 12 (API coverage plan): new create and update tools.
+    "crear_grupo_inventario": "create_account_group",
+    "actualizar_grupo_inventario": "update_account_group",
+    "actualizar_factura": "update_invoice",
+    "crear_cotizacion": "create_quotation",
+    "actualizar_cotizacion": "update_quotation",
+    "crear_factura_compra": "create_purchase",
+    "actualizar_factura_compra": "update_purchase",
+    "crear_documento_soporte": "create_support_document",
+    "actualizar_documento_soporte": "update_support_document",
+    "crear_recibo_pago": "create_payment_receipt",
+    "crear_recibo_pago_avanzado": "create_payment_receipt_detailed",
+    # Phase 13: delete and annul (risk level "permanent").
+    "eliminar_producto": "delete_product",
+    "eliminar_factura": "delete_invoice",
+    "anular_factura": "annul_invoice",
+    "eliminar_cotizacion": "delete_quotation",
+    "eliminar_factura_compra": "delete_purchase",
+    "eliminar_documento_soporte": "delete_support_document",
+    "eliminar_recibo_pago": "delete_payment_receipt",
+}
+
+#: Risk level of each write tool (API coverage plan, Part 3). Writes not listed here
+#: are plain creates or updates ("change").
+RISK: dict[str, str] = {
+    "eliminar_producto": "permanent",
+    "eliminar_factura": "permanent",
+    "anular_factura": "permanent",
+    "eliminar_cotizacion": "permanent",
+    "eliminar_factura_compra": "permanent",
+    "eliminar_documento_soporte": "permanent",
+    "eliminar_recibo_pago": "permanent",
 }
 
 #: Writes left out on purpose (deletes, annulments, emails, batches, and resources
@@ -93,26 +125,8 @@ WRITE_TOOLS: dict[str, str] = {
 EXCLUDED: frozenset[str] = frozenset(
     {
         "generar_token",
-        "eliminar_producto",
-        "crear_grupo_inventario",
-        "actualizar_grupo_inventario",
-        "actualizar_factura",
         "crear_lote_facturas",
-        "eliminar_factura",
-        "anular_factura",
         "enviar_factura_por_correo",
-        "crear_cotizacion",
-        "actualizar_cotizacion",
-        "eliminar_cotizacion",
-        "crear_factura_compra",
-        "actualizar_factura_compra",
-        "eliminar_factura_compra",
-        "crear_documento_soporte",
-        "actualizar_documento_soporte",
-        "eliminar_documento_soporte",
-        "crear_recibo_pago",
-        "crear_recibo_pago_avanzado",
-        "eliminar_recibo_pago",
         "crear_webhook",
         "actualizar_webhook",
         "eliminar_webhook",
@@ -182,6 +196,7 @@ def convert(source: dict[str, Any]) -> dict[str, Any]:
         if not read_only:
             tool["request_example"] = e.get("ejemplo_peticion")
             tool["notes"] = e.get("notas") or []
+            tool["risk"] = RISK.get(source_name, "change")
         tools.append(tool)
     return {
         "source": "owner's mcp_siigo catalog",
@@ -191,6 +206,16 @@ def convert(source: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def render(catalog: dict[str, Any]) -> str:
+    """The exact text of ``catalog.json`` for a converted catalog."""
+    return json.dumps(catalog, ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
+
+
+def build(source: Path = DEFAULT_SOURCE) -> str:
+    """Read the YAML source and return the ``catalog.json`` text."""
+    return render(convert(yaml.safe_load(source.read_text(encoding="utf-8"))))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
@@ -198,8 +223,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     data = yaml.safe_load(args.source.read_text(encoding="utf-8"))
     catalog = convert(data)
-    text = json.dumps(catalog, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-    args.output.write_text(text + "\n", encoding="utf-8")
+    text = render(catalog)
+    args.output.write_text(text, encoding="utf-8")
     reads = sum(t["read_only"] for t in catalog["tools"])
     writes = len(catalog["tools"]) - reads
     sys.stdout.write(

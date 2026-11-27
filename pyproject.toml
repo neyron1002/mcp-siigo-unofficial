@@ -1,6 +1,6 @@
 [project]
 name = "mcp-siigo-unofficial"
-version = "0.2.1"
+version = "0.2.1rc2"
 description = "Unofficial MCP server for the Siigo API, in a portable tray app. Free, no warranty, not affiliated with Siigo S.A.S."
 readme = "README.md"
 license = "MIT"
@@ -42,6 +42,7 @@ dev = [
     "mypy>=1.18",
     "pytest>=8.4",
     "pytest-cov>=7.0",
+    "pyyaml>=6.0",
 ]
 
 [build-system]

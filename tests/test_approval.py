@@ -26,6 +26,7 @@ from mcp_siigo_unofficial.server.approval import (
     automatic_seconds,
     summarize,
 )
+from mcp_siigo_unofficial.server.catalog import Risk
 from mcp_siigo_unofficial.server.transport import HOST, tray_approver
 from mcp_siigo_unofficial.vault import MemoryKeyStore
 from test_transport import free_port
@@ -319,3 +320,58 @@ def test_automatic_approval_never_survives_a_restart(tmp_path: Path) -> None:
         assert again.write_switch.enabled is False
     finally:
         again.shutdown()
+
+
+# ---------------------------------------------------------------------- risk levels (A2-A4)
+
+
+@pytest.mark.parametrize("risk", [Risk.PERMANENT, Risk.OUTBOUND])
+async def test_risky_writes_are_never_preapproved(clock: FakeClock, risk: Risk) -> None:
+    broker = ApprovalBroker(clock=clock)
+    shown = answer_with(broker, Decision.APPROVE_SIMILAR)
+    broker.start_automatic(AutomaticSpan.HOUR, confirm_text=AUTOMATIC_CONFIRM_TEXT)
+    risky = make_request(tool="siigo_delete_product", risk=risk)
+    assert broker.preapproved(risky) is None
+    auto = broker.automatic()
+    assert auto is not None
+    assert auto.writes_used == 0  # a refused shortcut doesn't use up a write
+    # "Approve similar" in the window approves this one request and starts no grant.
+    assert await broker.request(risky) is Outcome.APPROVED
+    assert broker.grants() == []
+    assert len(shown) == 1
+    # A plain change still uses automatic approval.
+    assert broker.preapproved(make_request()) is Outcome.AUTOMATIC
+
+
+async def test_a_grant_never_covers_a_risky_write(clock: FakeClock) -> None:
+    broker = ApprovalBroker(clock=clock)
+    answer_with(broker, Decision.APPROVE_SIMILAR)
+    assert await broker.request(make_request()) is Outcome.APPROVED_SIMILAR
+    same_tool_but_risky = make_request(risk=Risk.PERMANENT)
+    assert broker.preapproved(same_tool_but_risky) is None
+
+
+def test_the_tray_takes_the_risk_from_its_own_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    from mcp_siigo_unofficial.server import approval
+
+    levels = {"siigo_delete_product": Risk.PERMANENT, "siigo_create_product": Risk.CHANGE}
+    monkeypatch.setattr(approval, "risk_of", lambda tool: levels.get(tool, Risk.PERMANENT))
+    lowered = make_request(tool="siigo_delete_product").to_json()
+    lowered["risk"] = "change"  # a request can't lower the level
+    assert ApprovalRequest.from_json(lowered).risk is Risk.PERMANENT
+    raised = make_request(risk=Risk.OUTBOUND).to_json()
+    assert ApprovalRequest.from_json(raised).risk is Risk.OUTBOUND  # it can raise it
+    unknown = make_request(tool="siigo_something_new").to_json()
+    assert ApprovalRequest.from_json(unknown).risk is Risk.PERMANENT
+    assert ApprovalRequest.from_json(make_request().to_json()).risk is Risk.CHANGE
+
+
+def test_outbound_summary_keeps_addresses_whole() -> None:
+    long = "a-very-long-mailbox-name-for-a-test@" + "x" * 80 + ".example.com"
+    body = {"mail_to": long, "copy_to": "b@example.com;c@example.com"}
+    assert summarize({"id": "F1"}, body, full=True) == [
+        ("id", "F1"),
+        ("mail_to", long),
+        ("copy_to", "b@example.com;c@example.com"),
+    ]
+    assert summarize({}, body)[0][1].endswith("…")
