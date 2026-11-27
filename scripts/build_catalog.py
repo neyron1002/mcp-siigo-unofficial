@@ -98,26 +98,35 @@ WRITE_TOOLS: dict[str, str] = {
     "actualizar_documento_soporte": "update_support_document",
     "crear_recibo_pago": "create_payment_receipt",
     "crear_recibo_pago_avanzado": "create_payment_receipt_detailed",
+    # Phase 13: delete and annul (risk level "permanent").
+    "eliminar_producto": "delete_product",
+    "eliminar_factura": "delete_invoice",
+    "anular_factura": "annul_invoice",
+    "eliminar_cotizacion": "delete_quotation",
+    "eliminar_factura_compra": "delete_purchase",
+    "eliminar_documento_soporte": "delete_support_document",
+    "eliminar_recibo_pago": "delete_payment_receipt",
 }
 
 #: Risk level of each write tool (API coverage plan, Part 3). Writes not listed here
 #: are plain creates or updates ("change").
-RISK: dict[str, str] = {}
+RISK: dict[str, str] = {
+    "eliminar_producto": "permanent",
+    "eliminar_factura": "permanent",
+    "anular_factura": "permanent",
+    "eliminar_cotizacion": "permanent",
+    "eliminar_factura_compra": "permanent",
+    "eliminar_documento_soporte": "permanent",
+    "eliminar_recibo_pago": "permanent",
+}
 
 #: Writes left out on purpose (deletes, annulments, emails, batches, and resources
 #: outside plan section 5). Listed so that a new source endpoint is never missed.
 EXCLUDED: frozenset[str] = frozenset(
     {
         "generar_token",
-        "eliminar_producto",
         "crear_lote_facturas",
-        "eliminar_factura",
-        "anular_factura",
         "enviar_factura_por_correo",
-        "eliminar_cotizacion",
-        "eliminar_factura_compra",
-        "eliminar_documento_soporte",
-        "eliminar_recibo_pago",
         "crear_webhook",
         "actualizar_webhook",
         "eliminar_webhook",

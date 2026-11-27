@@ -138,6 +138,12 @@ class MockSiigo:
         resource = parts[0]
         if resource in CATALOGS and len(parts) == 1 and request.method == "GET":
             return httpx2.Response(200, json=CATALOGS[resource])
+        if resource == "invoices" and len(parts) == 3 and parts[2] == "annul":
+            invoice = self.data["invoices"].get(parts[1])
+            if request.method != "POST" or invoice is None:
+                return self._not_found(parts[1])
+            invoice["annulled"] = True
+            return httpx2.Response(200, json={"id": parts[1], "Annul": True})
         if resource not in RESOURCES or len(parts) > 2:
             return siigo_error(404, "not_found", "Resource not found.")
         item_id = parts[1] if len(parts) == 2 else None

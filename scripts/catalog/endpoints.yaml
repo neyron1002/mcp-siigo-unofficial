@@ -3184,6 +3184,8 @@ endpoints:
   ejemplo_respuesta:
     id: 63f918c2-ca65-4edc-a7db-66bcdd5159fb
     deleted: true
+  notas:
+  - 'Una factura electrónica enviada o aceptada por la DIAN (con CUFE) no se puede borrar ni anular: se corrige con una nota crédito (siigo_create_credit_note). Prefiera anular a borrar: anular deja el registro en Siigo con estado anulado.'
 - nombre: anular_factura
   recurso: facturas_venta
   metodo: POST
@@ -3207,6 +3209,8 @@ endpoints:
   ejemplo_respuesta:
     id: 63f918c2-ca65-4edc-a7db-66bcdd5159fb
     Annul: true
+  notas:
+  - 'Una factura electrónica enviada o aceptada por la DIAN (con CUFE) no se puede borrar ni anular: se corrige con una nota crédito (siigo_create_credit_note). Prefiera anular a borrar: anular deja el registro en Siigo con estado anulado.'
 - nombre: listar_facturas
   recurso: facturas_venta
   metodo: GET

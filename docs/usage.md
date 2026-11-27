@@ -64,7 +64,7 @@ Some writes are riskier than creating or changing a record, so they have stricte
 | Kind | Examples | How you approve it |
 |---|---|---|
 | **Create or update** | Create an invoice, update a customer | The rules above. |
-| **Can't be undone** | Delete a record, annul an invoice | Only in the **Siigo window**, one at a time, even in "In the AI app" mode. The window has a red banner. |
+| **Can't be undone** | Delete a record, annul an invoice | Only in the **Siigo window**, one at a time, even in "In the AI app" mode. The window has a red banner and shows the record as Siigo has it now (name, number, date, customer, total). If the app can't read the record, it asks nothing and sends nothing. |
 | **Sends data outside Siigo** | Email an invoice, create a webhook | In your chosen mode, one at a time. The window has an amber banner and shows every email address and URL in full. |
 
 "Approve similar writes" and automatic approval never cover the two risky kinds, and the window has no "Approve similar writes" button for them. The app takes the kind from its own tool list, so an AI app can't make a write look safer than it is.
