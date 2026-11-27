@@ -14,6 +14,12 @@ It prints a report; each check has `"ok": true` or an error.
 - **Ubuntu:** the top bar shows tray icons only with the "AppIndicator and KStatusNotifierItem Support" extension (on by default in Ubuntu). Without a tray, the app opens the Settings window instead.
 - If the app is already running, starting it again brings its Settings window forward.
 
+## The app closes at start on Windows ("Unable to configure formatter 'default'")
+
+Version 0.2.0 closed at start on Windows with a window that ends in `ValueError: Unable to configure formatter 'default'`. The app has no console window, and the server's logging setup needed one. Version 0.2.1 fixes it: download it from the [releases page](https://github.com/neyron1002/mcp-siigo-unofficial/releases) and run it; it installs over 0.2.0 and keeps your settings.
+
+If the app still closes or shows "MCP server stopped", open `logs\app.log` in the app folder ([Where your data is](usage.md#where-your-data-is)) and add its last lines to your report.
+
 ## Windows SmartScreen or macOS blocks the app
 
 The files are not signed with a paid code-signing certificate. Follow the first-run steps in [Install](install.md#windows) (Windows) or [Install](install.md#macos) (macOS). You can check that the file is genuine with [Verify a download](install.md#verify-a-download).
@@ -78,4 +84,4 @@ The app could not reach GitHub (no internet, a proxy, or GitHub's request limit)
 
 ## Report a problem
 
-Open an issue on [GitHub](https://github.com/neyron1002/mcp-siigo-unofficial/issues) with your system, the app version (in **About**), and the self-test report. Never include your Siigo credentials, the access key, or the client setup text.
+Open an issue on [GitHub](https://github.com/neyron1002/mcp-siigo-unofficial/issues) with your system, the app version (in **About**), the self-test report, and on Windows the last lines of `logs\app.log`. Never include your Siigo credentials, the access key, or the client setup text.

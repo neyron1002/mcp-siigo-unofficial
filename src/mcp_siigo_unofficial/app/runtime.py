@@ -157,13 +157,13 @@ class AppRuntime:
         """Start the MCP HTTP server. False (with ``server_error``) if it cannot start."""
         if self.server_running:
             return True
-        self.http = HttpServerThread(self.server, self.bearer_key, port=self.port)
         try:
+            self.http = HttpServerThread(self.server, self.bearer_key, port=self.port)
             self.http.start()
-        except (OSError, RuntimeError, TimeoutError) as exc:
-            self.server_error = str(exc)
+        except Exception as exc:  # any failure: the tray shows it instead of closing
+            self.server_error = str(exc) or type(exc).__name__
             self.http = None
-            log.error("MCP server did not start: %s", exc)
+            log.exception("MCP server did not start")
             return False
         self.server_error = None
         return True

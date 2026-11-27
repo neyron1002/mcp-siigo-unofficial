@@ -24,9 +24,13 @@ import contextlib
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
+import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import anyio
@@ -41,7 +45,7 @@ def check(condition: bool, message: str) -> None:
     print(f"ok  {message}", flush=True)
 
 
-def kill_tree(process: subprocess.Popen[str]) -> None:
+def kill_tree(process: subprocess.Popen[str] | subprocess.Popen[bytes]) -> None:
     if sys.platform.startswith("win"):
         subprocess.run(  # noqa: S603
             ["taskkill", "/T", "/F", "/PID", str(process.pid)],  # noqa: S607
@@ -82,6 +86,58 @@ def run(
     if result.stderr:
         print(result.stderr[-4000:], file=sys.stderr)
     return result
+
+
+def http_status(url: str, process: subprocess.Popen[bytes], timeout: float) -> int | None:
+    """Wait until ``url`` answers; return its HTTP status (None if the process ends)."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            return None
+        try:
+            with urllib.request.urlopen(url, timeout=5) as response:  # noqa: S310 - 127.0.0.1
+                return int(response.status)
+        except urllib.error.HTTPError as exc:
+            return int(exc.code)
+        except OSError:
+            time.sleep(0.5)
+    return None
+
+
+def smoke_no_console(home: Path, env: dict[str, str]) -> None:
+    """Windows: an app opened from Explorer has no stdout or stderr (the v0.2.0 bug).
+
+    Starts the installed app with ``--serve`` and no streams at all, the way Windows
+    starts a window app, and checks that the MCP endpoint answers 401 (no bearer key).
+    """
+    current = (home / "current").read_text(encoding="utf-8").strip()
+    version_dir = home / "versions" / current
+    manifest = json.loads((version_dir / "payload.json").read_text(encoding="utf-8"))
+    exe = version_dir / manifest["app_exe"]
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = int(sock.getsockname()[1])
+    # Its own data folder: the null keychain of this test keeps no vault key, so the
+    # vault made by the earlier steps cannot be opened again.
+    data = home.parent / "no-console-data"
+    serve_env = {**env, "MCP_SIIGO_UNOFFICIAL_HOME": str(data)}
+    command = [str(exe), "--serve", "--port", str(port)]
+    print("+", " ".join(command), "(no console, no streams)", flush=True)
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0) | getattr(
+        subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+    )
+    process = subprocess.Popen(command, env=serve_env, creationflags=flags, close_fds=True)  # noqa: S603
+    try:
+        status = http_status(f"http://127.0.0.1:{port}/mcp", process, timeout=120)
+        exit_code = process.poll()
+    finally:
+        kill_tree(process)
+    if status != 401:
+        log = data / "logs" / "app.log"
+        print(f"exit code: {exit_code}", file=sys.stderr)
+        if log.is_file():
+            print(log.read_text(encoding="utf-8")[-4000:], file=sys.stderr)
+    check(status == 401, f"the app with no console serves MCP over HTTP (status {status})")
 
 
 async def list_tools_over_stdio(command: str, args: list[str], env: dict[str, str]) -> int:
@@ -144,6 +200,8 @@ def smoke_launcher(artifact: Path, home: Path, env: dict[str, str], offline: boo
     check(result.returncode == 0, "the installed launcher runs the current version")
     tools = anyio.run(list_tools_over_stdio, str(launcher), ["--stdio"], env)
     check(tools == EXPECTED_TOOLS, f"--stdio lists {EXPECTED_TOOLS} tools (got {tools})")
+    if sys.platform.startswith("win"):
+        smoke_no_console(home, env)
     smoke_clients(launcher, home.parent, env)
     # The updater's install path: self-test of the new version, then the switch.
     result = run([str(artifact), "--update", "--no-start"], env)
