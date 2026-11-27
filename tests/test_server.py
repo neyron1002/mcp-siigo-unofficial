@@ -628,3 +628,74 @@ def test_follow_vault_switch_reads_the_tray_state(vault: Vault, switch: WriteSwi
     assert follower.enabled is True
     with pytest.raises(Exception, match="tray"):
         follower.disable()
+
+
+# ---------------------------------------------------------------------- Idempotency-Key (A6)
+
+
+def idempotency_keys(mock: MockSiigo) -> list[str | None]:
+    return [
+        r.headers.get("Idempotency-Key")
+        for r in mock.requests
+        if r.method == "POST" and r.url.path.startswith("/v1/")
+    ]
+
+
+async def test_same_invoice_twice_creates_one_document(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo, vault: Vault
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    async with Client(server) as client:
+        first = payload(await client.call_tool("siigo_create_invoice", {"body": INVOICE}))
+        again = payload(await client.call_tool("siigo_create_invoice", {"body": INVOICE}))
+        other = payload(
+            await client.call_tool(
+                "siigo_create_invoice", {"body": {**INVOICE, "observations": "second one"}}
+            )
+        )
+    assert again["id"] == first["id"]
+    assert other["id"] != first["id"]
+    assert len(mock_siigo.data["invoices"]) == 2
+    keys = idempotency_keys(mock_siigo)
+    assert len(keys) == 3
+    assert keys[0] == keys[1] != keys[2]
+    assert all(k is not None and k.isalnum() and len(k) == 30 for k in keys)
+    logged = [e.detail.get("idempotency_key") for e in vault.events("write.executed")]
+    assert logged == keys
+
+
+async def test_no_idempotency_key_where_siigo_does_not_accept_it(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    async with Client(server) as client:
+        await client.call_tool("siigo_create_customer", {"body": {"identification": "1"}})
+    assert idempotency_keys(mock_siigo) == [None]
+
+
+async def test_idempotent_tools_explain_duplicate_protection(server: SiigoMCPServer) -> None:
+    from mcp_siigo_unofficial.server import idempotency
+
+    with_note = {
+        t.name for t in load_catalog().write_tools if idempotency.applies(t.method, t.path)
+    }
+    assert with_note == {
+        "siigo_create_invoice",
+        "siigo_create_credit_note",
+        "siigo_create_journal",
+        "siigo_create_voucher",
+        "siigo_create_voucher_misc_income",
+    }
+    for tool in load_catalog().write_tools:
+        description = app_module._describe(tool)
+        assert (idempotency.NOTE in description) == (tool.name in with_note)
+
+
+def test_idempotency_key_ignores_field_order() -> None:
+    from mcp_siigo_unofficial.server import idempotency
+
+    a = idempotency.key_for("/v1/invoices", {"date": "2026-11-27", "seller": 1})
+    b = idempotency.key_for("/v1/invoices", {"seller": 1, "date": "2026-11-27"})
+    assert a == b
+    assert a != idempotency.key_for("/v1/credit-notes", {"date": "2026-11-27", "seller": 1})
+    assert idempotency.headers_for("PUT", "/v1/invoices", {"x": 1}) == {}

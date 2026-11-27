@@ -1,14 +1,15 @@
-"""Convert the owner's Siigo endpoint catalog (YAML) into the shipped JSON catalog.
+"""Convert the Siigo endpoint catalog (YAML) into the shipped JSON catalog.
 
-Source: ``references/existing_mcp/mcp_siigo/catalogo/endpoints.yaml``, the owner's own
-earlier MCP server (authorship confirmed on 2026-11-18). The ``references/`` folder
-is not in the repository, so the generated file is committed.
+Source: ``scripts/catalog/endpoints.yaml``. It started as the catalog of the owner's own
+earlier MCP server (authorship confirmed on 2026-11-18, MIT) and has been edited by hand in
+this repository since 2026-11-27 (decision A7). It is a development file and is not shipped.
 
-Plan D20: PyYAML is used only here, at development time; the app ships JSON.
+Plan D20: PyYAML is used only here and in the tests (dev dependency group); the app ships
+JSON. ``tests/test_catalog_source.py`` fails when ``catalog.json`` is not rebuilt.
 
 Usage (inside the dev container)::
 
-    uv run --with pyyaml python scripts/build_catalog.py
+    uv run python scripts/build_catalog.py
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SOURCE = ROOT / "references/existing_mcp/mcp_siigo/catalogo/endpoints.yaml"
+DEFAULT_SOURCE = ROOT / "scripts/catalog/endpoints.yaml"
 DEFAULT_OUTPUT = ROOT / "src/mcp_siigo_unofficial/server/catalog.json"
 
 #: Read tools: every safe read endpoint of the source catalog.
@@ -191,6 +192,16 @@ def convert(source: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def render(catalog: dict[str, Any]) -> str:
+    """The exact text of ``catalog.json`` for a converted catalog."""
+    return json.dumps(catalog, ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n"
+
+
+def build(source: Path = DEFAULT_SOURCE) -> str:
+    """Read the YAML source and return the ``catalog.json`` text."""
+    return render(convert(yaml.safe_load(source.read_text(encoding="utf-8"))))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--source", type=Path, default=DEFAULT_SOURCE)
@@ -198,8 +209,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     data = yaml.safe_load(args.source.read_text(encoding="utf-8"))
     catalog = convert(data)
-    text = json.dumps(catalog, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-    args.output.write_text(text + "\n", encoding="utf-8")
+    text = render(catalog)
+    args.output.write_text(text, encoding="utf-8")
     reads = sum(t["read_only"] for t in catalog["tools"])
     writes = len(catalog["tools"]) - reads
     sys.stdout.write(

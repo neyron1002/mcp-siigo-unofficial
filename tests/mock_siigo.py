@@ -25,6 +25,7 @@ from typing import Any
 import httpx2
 
 PARTNER_ID = re.compile(r"^[A-Za-z0-9]{3,100}$")
+IDEMPOTENCY_KEY = re.compile(r"^[A-Za-z0-9]{1,30}$")
 TEST_USERNAME = "sandbox@example.com"
 TEST_ACCESS_KEY = "dGVzdC1hY2Nlc3Mta2V5LW5vdC1yZWFs"
 
@@ -74,6 +75,7 @@ class MockSiigo:
         self.data: dict[str, dict[str, dict[str, Any]]] = {r: {} for r in RESOURCES}
         self._lock = threading.Lock()
         self._invoice_number = 0
+        self.idempotency: dict[tuple[str, str], str] = {}
 
     # ------------------------------------------------------------------ test helpers
     def expire_tokens(self) -> None:
@@ -164,7 +166,19 @@ class MockSiigo:
             body = json.loads(request.content or b"{}")
             if not isinstance(body, dict) or not body:
                 return siigo_error(400, "invalid_type", "The request body is required.")
-            return httpx2.Response(201, json=self._create(resource, body))
+            key = request.headers.get("Idempotency-Key")
+            if key is not None:
+                if not IDEMPOTENCY_KEY.fullmatch(key):
+                    return siigo_error(
+                        400, "invalid_idempotency-key", "The Idempotency-Key is invalid."
+                    )
+                earlier = self.idempotency.get((resource, key))
+                if earlier is not None:  # Siigo returns the document created before
+                    return httpx2.Response(200, json=store[earlier])
+            item = self._create(resource, body)
+            if key is not None:
+                self.idempotency[(resource, key)] = item["id"]
+            return httpx2.Response(201, json=item)
         if method == "PUT" and item_id is not None:
             if item_id not in store:
                 return self._not_found(item_id)

@@ -34,6 +34,7 @@ from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
 from mcp_siigo_unofficial import __version__
+from mcp_siigo_unofficial.server import idempotency
 from mcp_siigo_unofficial.server.approval import (
     ApprovalMode,
     ApprovalRequest,
@@ -144,6 +145,8 @@ def _describe(endpoint: EndpointTool) -> str:
         parts.append(f"Fixed query: {fixed}.")
     if endpoint.notes:
         parts.append("Notes: " + " ".join(endpoint.notes))
+    if idempotency.applies(endpoint.method, endpoint.path):
+        parts.append(idempotency.NOTE)
     if endpoint.request_example is not None:
         parts.append("Request body example: " + _truncate(_compact(endpoint.request_example)))
     return "\n\n".join(parts)
@@ -560,8 +563,11 @@ class SiigoMCPServer(MCPServer[Any]):
             raise _tool_error({"code": "invalid_arguments", "message": str(exc)}) from exc
         query = endpoint.build_query(kwargs)
         body = kwargs.get("body") if endpoint.body_schema is not None else None
+        headers = idempotency.headers_for(endpoint.method, path, body)
         try:
-            data = await self.siigo.request(endpoint.method, path, params=query, json=body)
+            data = await self.siigo.request(
+                endpoint.method, path, params=query, json=body, headers=headers or None
+            )
         except SiigoError as exc:
             raise _tool_error(exc.to_dict()) from exc
         if approved_via is not None:
@@ -574,6 +580,7 @@ class SiigoMCPServer(MCPServer[Any]):
                         "method": endpoint.method,
                         "path": path,
                         "approved_via": approved_via,
+                        **({"idempotency_key": headers[idempotency.HEADER]} if headers else {}),
                     },
                 )
         return _compact(data)
