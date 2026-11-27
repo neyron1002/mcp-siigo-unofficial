@@ -48,6 +48,7 @@ from test_clients import (
     installer,
     make_env,
     make_exe,
+    make_windows_desktop,
 )
 
 
@@ -146,6 +147,24 @@ def test_connect_writes_settings_and_shows_restart(
     wait_idle(window)
     assert restarted == [True]
     assert window.result_label.text() == "Claude Desktop was restarted."
+
+
+@pytest.mark.parametrize("install", ["classic", "msix", "msix-data"])
+def test_windows_claude_desktop_is_found_and_connected(
+    qapp: QApplication, tr: Translator, home: Path, bin_dir: Path, install: str
+) -> None:
+    """Both Windows install types: the classic installer and the MSIX package."""
+    settings = make_windows_desktop(home, install) / "claude_desktop_config.json"
+    env = make_env(home, bin_dir, FakeRunner(home), platform="win32")
+    window = ConnectWindow(installer(env), tr, lambda: True)
+    row = window.rows["claude-desktop"]
+    assert row.box.isEnabled()
+    assert row.box.isChecked()
+    assert row.state.text() == "Found"
+    window.connect_selected()
+    wait_idle(window)
+    assert json.loads(settings.read_text())["mcpServers"]["siigo"]["args"] == ["--stdio"]
+    assert window.rows["claude-desktop"].state.text() == "Connected · stdio (recommended)"
 
 
 def test_http_choice_and_switch_to_stdio(

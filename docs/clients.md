@@ -57,7 +57,8 @@ Add `--scope user` after `add` to use it in every project. Check it with `claude
 
 Choose **Copy client setup → Claude Desktop**. In Claude Desktop, open **Settings → Developer → Edit Config**. This opens `claude_desktop_config.json`:
 
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- Windows, classic installer: `%APPDATA%\Claude\claude_desktop_config.json`
+- Windows, Microsoft Store (MSIX) package: `%LOCALAPPDATA%\Claude-Data\claude_pzs8sxrjxfjjc\claude_desktop_config.json` in newer versions, `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\claude_desktop_config.json` in older ones.
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 Paste the `siigo` entry inside `mcpServers` (keep any servers that are already there), save, and restart Claude Desktop. The entry starts the installed launcher:

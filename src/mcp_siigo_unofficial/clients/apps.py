@@ -301,7 +301,19 @@ class ClaudeCode(JsonClientApp):
 
 
 class ClaudeDesktop(JsonClientApp):
-    """Claude Desktop chat. It starts servers itself: stdio only (plan Q2b)."""
+    """Claude Desktop chat. It starts servers itself: stdio only (plan Q2b).
+
+    Windows has two install types (checked on Windows 11 on 2026-11-27):
+
+    - The classic installer: program in ``%LOCALAPPDATA%\\AnthropicClaude``,
+      settings in ``%APPDATA%\\Claude``.
+    - The MSIX package (Microsoft Store style), package family ``Claude_<id>``.
+      Windows redirects its ``%APPDATA%`` to
+      ``%LOCALAPPDATA%\\Packages\\Claude_<id>\\LocalCache\\Roaming``, so older
+      versions keep their settings in ``...\\LocalCache\\Roaming\\Claude``. Newer
+      versions move them to ``%LOCALAPPDATA%\\Claude-Data\\claude_<id>`` and leave a
+      ``.user-data-left.*`` file in the old folders.
+    """
 
     id = "claude-desktop"
     label = "Claude Desktop"
@@ -311,9 +323,25 @@ class ClaudeDesktop(JsonClientApp):
     def is_available(self, env: Environment) -> bool:
         return env.windows or env.macos
 
+    def msix_packages(self, env: Environment) -> list[Path]:
+        """The data folders of the installed Claude Desktop MSIX packages (Windows)."""
+        packages = env.localappdata() / "Packages"
+        if not packages.is_dir():
+            return []
+        return sorted(p for p in packages.glob("Claude_*") if p.is_dir())
+
+    def _windows_config_dir(self, env: Environment) -> Path:
+        for package in self.msix_packages(env):
+            publisher_id = package.name.partition("_")[2]
+            data = env.localappdata() / "Claude-Data" / f"claude_{publisher_id}"
+            if data.is_dir():
+                return data
+            return package / "LocalCache" / "Roaming" / "Claude"
+        return env.appdata() / "Claude"
+
     def config_dir(self, env: Environment) -> Path:
         if env.windows:
-            return env.appdata() / "Claude"
+            return self._windows_config_dir(env)
         if env.macos:
             return env.app_support() / "Claude"
         return env.xdg_config() / "Claude"
@@ -327,6 +355,7 @@ class ClaudeDesktop(JsonClientApp):
             markers += [Path("/Applications/Claude.app"), env.home / "Applications" / "Claude.app"]
         if env.windows:
             markers.append(env.localappdata() / "AnthropicClaude")
+            markers += self.msix_packages(env)
         return markers
 
 
