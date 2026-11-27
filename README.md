@@ -10,6 +10,14 @@
 
 Then follow the [install guide](docs/install.md). Older versions and checksums are on the [releases page](https://github.com/neyron1002/mcp-siigo-unofficial/releases).
 
+> [!WARNING]
+> **New in v0.3.0: the whole Siigo API.** This version adds 22 write tools: quotations, purchase invoices, support documents, payment receipts, inventory categories, invoice edit, delete, and annul, invoice email, and webhooks ([list](docs/tools.md)). They follow Siigo's documentation of 2026-11-27, but they have **not been tested on a real Siigo company yet**.
+>
+> - Try them first with test records, or with records you can delete or correct, before you use them on real accounting data.
+> - Read the approval window carefully before you approve. Deleting and annulling can't be undone, and electronic invoices go to the DIAN.
+> - If something fails, or Siigo answers differently than expected, [report it on GitHub](https://github.com/neyron1002/mcp-siigo-unofficial/issues) with the tool name, what you asked for, and Siigo's error message (never your credentials or access key). I'll fix it.
+> - Reading data works as before.
+
 **MCP Siigo Unofficial** connects AI assistants such as Claude, Codex, Copilot, and Gemini to your Siigo accounting data. I built it for a friend's company, and for anyone who needs it: business owners, accountants, and accounting professionals. It is free of charge.
 
 **Juan Manuel Pedraza**, a systems engineer from Bogotá, Colombia, with 16 years of experience. I am a full-stack developer, Forward Deployed Engineer, and AI Builder.
@@ -105,6 +113,14 @@ This project is planned and built by AI agents (Claude Code) under the owner's d
 | Ubuntu 22.04/24.04 (x64) | [Descargar para Ubuntu](https://github.com/neyron1002/mcp-siigo-unofficial/releases/latest/download/mcp-siigo-unofficial-linux-x64) |
 
 Luego siga la [guía de instalación](docs/install.md#español). Las versiones anteriores y las sumas de verificación están en la [página de versiones](https://github.com/neyron1002/mcp-siigo-unofficial/releases).
+
+> [!WARNING]
+> **Novedad en v0.3.0: toda la API de Siigo.** Esta versión agrega 22 herramientas de escritura: cotizaciones, facturas de compra, documentos soporte, recibos de pago, categorías de inventario, edición, borrado y anulación de facturas, envío de facturas por correo y webhooks ([lista](docs/tools.md)). Siguen la documentación de Siigo del 2026-11-27, pero **todavía no se han probado en una empresa real de Siigo**.
+>
+> - Pruébelas primero con registros de prueba, o con registros que pueda borrar o corregir, antes de usarlas con datos contables reales.
+> - Lea con cuidado la ventana de aprobación antes de aprobar. Borrar y anular no se puede deshacer, y las facturas electrónicas van a la DIAN.
+> - Si algo falla, o Siigo responde distinto de lo esperado, [repórtelo en GitHub](https://github.com/neyron1002/mcp-siigo-unofficial/issues) con el nombre de la herramienta, lo que pidió y el mensaje de error de Siigo (nunca sus credenciales ni su clave de acceso). Yo lo corrijo.
+> - La lectura de datos funciona igual que antes.
 
 **MCP Siigo Unofficial** conecta asistentes de IA como Claude, Codex, Copilot y Gemini con los datos contables de Siigo. Lo construí para la empresa de un amigo y para quien lo necesite: empresarios, contadores y profesionales contables. Es gratuito.
 
