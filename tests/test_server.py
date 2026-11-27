@@ -162,11 +162,19 @@ def test_catalog_scope() -> None:
         "siigo_delete_purchase",
         "siigo_delete_support_document",
         "siigo_delete_payment_receipt",
+        # Phase 14: email and webhooks
+        "siigo_send_invoice_email",
+        "siigo_create_webhook",
+        "siigo_update_webhook",
+        "siigo_delete_webhook",
     } == WRITE_NAMES
     permanent = {t.name for t in CATALOG.write_tools if t.risk.value == "permanent"}
     assert permanent == {t.name for t in CATALOG.tools if t.method == "DELETE"} | {
         "siigo_annul_invoice"
     }
+    outbound = {t.name for t in CATALOG.write_tools if t.risk.value == "outbound"}
+    assert outbound == {"siigo_send_invoice_email", "siigo_create_webhook", "siigo_update_webhook"}
+    assert len(WRITE_NAMES) == 31
     assert all(t.path.startswith("/v1/") for t in CATALOG.tools)
 
 
@@ -1004,3 +1012,89 @@ async def test_rejected_delete_sends_nothing(
     assert result["status"] == "rejected_by_user"
     assert product["id"] in mock_siigo.data["products"]
     assert not any(r.method == "DELETE" for r in mock_siigo.requests)
+
+
+# ---------------------------------------------------------------------- phase 14: email, webhooks
+
+
+async def test_send_invoice_email(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo, approver: ScriptedApprover
+) -> None:
+    from mcp_siigo_unofficial.server.catalog import Risk
+
+    switch.enable(accepted_responsibility=True)
+    (invoice,) = mock_siigo.seed("invoices", 1)
+    copies = "contabilidad@example.com;gerencia-con-un-nombre-largo@" + "x" * 70 + ".example.com"
+    body = {"mail_to": "cliente@example.com", "copy_to": copies}
+    async with Client(server) as client:
+        result = payload(
+            await client.call_tool("siigo_send_invoice_email", {"id": invoice["id"], "body": body})
+        )
+    assert result == {"status": "sent", "observations": ""}
+    assert mock_siigo.mails == [{"invoice": invoice["id"], **body}]
+    (request,) = approver.requests
+    assert request.risk is Risk.OUTBOUND
+    assert ("copy_to", copies) in request.summary  # every address, whole
+
+
+async def test_invoice_email_to_more_than_five_addresses_is_refused(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo, approver: ScriptedApprover
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    body = {"mail_to": "a@example.com", "copy_to": ";".join(f"c{i}@example.com" for i in range(5))}
+    async with Client(server) as client:
+        result = await client.call_tool("siigo_send_invoice_email", {"id": "F1", "body": body})
+    assert result.is_error
+    assert "at most 5 addresses" in payload(result)["error"]["message"]
+    assert approver.requests == []
+    assert mock_siigo.mails == []
+
+
+async def test_webhook_life_cycle(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo, approver: ScriptedApprover
+) -> None:
+    from mcp_siigo_unofficial.server.catalog import Risk
+
+    switch.enable(accepted_responsibility=True)
+    hook = {
+        "application_id": "MyShop",
+        "topic": "public.siigoapi.products.create",
+        "url": "https://shop.example.com/siigo",
+    }
+    async with Client(server) as client:
+        created = payload(await client.call_tool("siigo_create_webhook", {"body": hook}))
+        updated = payload(
+            await client.call_tool(
+                "siigo_update_webhook", {"body": {**hook, "url": "https://shop.example.com/v2"}}
+            )
+        )
+        deleted = payload(await client.call_tool("siigo_delete_webhook", {"id": created["id"]}))
+    assert updated["url"] == "https://shop.example.com/v2"
+    assert deleted == {"id": created["id"], "deleted": True}
+    assert mock_siigo.data["webhooks"] == {}
+    create, update, delete = approver.requests
+    assert (create.risk, update.risk, delete.risk) == (
+        Risk.OUTBOUND,
+        Risk.OUTBOUND,
+        Risk.PERMANENT,
+    )
+    assert ("url", "https://shop.example.com/siigo") in create.summary
+    # The delete window shows the subscription, found in the webhook list.
+    assert ("topic", "public.siigoapi.products.create") in delete.summary
+    assert ("url", "https://shop.example.com/v2") in delete.summary
+
+
+@pytest.mark.parametrize("url", ["http://shop.example.com/siigo", "ftp://x", "shop.example.com"])
+async def test_webhook_url_must_be_https(
+    server: SiigoMCPServer, switch: WriteSwitch, approver: ScriptedApprover, url: str
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    body = {"application_id": "A", "topic": "public.siigoapi.products.create", "url": url}
+    async with Client(server) as client:
+        result = await client.call_tool("siigo_create_webhook", {"body": body})
+    assert result.is_error
+    assert approver.requests == []
+
+
+def test_invoice_batch_stays_out() -> None:
+    assert not any(t.path == "/v1/invoices/batch" for t in CATALOG.tools)  # decision A5

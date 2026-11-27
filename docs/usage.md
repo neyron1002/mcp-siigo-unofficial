@@ -69,6 +69,8 @@ Some writes are riskier than creating or changing a record, so they have stricte
 
 "Approve similar writes" and automatic approval never cover the two risky kinds, and the window has no "Approve similar writes" button for them. The app takes the kind from its own tool list, so an AI app can't make a write look safer than it is.
 
+Before asking you, the app also refuses webhook URLs that don't start with `https://`, and invoice emails to more than 5 addresses (Siigo's limit). Creating invoices in a batch is not available: create them one by one.
+
 ### Duplicate protection
 
 Creating a sales invoice, credit note, journal, or cash receipt sends Siigo an `Idempotency-Key` made from the request content. If an AI app sends exactly the same document again (for example after a slow answer or a timeout), Siigo returns the document it created the first time and creates nothing new. Each write still needs your approval.

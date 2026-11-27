@@ -21,6 +21,7 @@ import inspect
 import json
 import logging
 import os
+import re
 import time
 import weakref
 from collections.abc import Awaitable, Callable
@@ -134,6 +135,39 @@ def _truncate(text: str, limit: int = _MAX_PREVIEW_CHARS) -> str:
 
 def _tool_error(payload: dict[str, Any]) -> ToolError:
     return ToolError(_compact({"error": payload}))
+
+
+MAX_EMAIL_ADDRESSES = 5  # Siigo's limit for one invoice email
+
+
+def _check_outbound(body: Any) -> None:
+    """Refuse, before anyone is asked, what Siigo would refuse or what is clearly unsafe."""
+    if not isinstance(body, dict):
+        return
+    url = body.get("url")
+    if url is not None and not str(url).strip().lower().startswith("https://"):
+        raise _tool_error(
+            {
+                "code": "invalid_arguments",
+                "message": "The webhook URL must start with https://. Nothing was sent.",
+            }
+        )
+    addresses = [
+        part
+        for field_name in ("mail_to", "copy_to")
+        for part in re.split(r"[;,\s]+", str(body.get(field_name) or ""))
+        if part
+    ]
+    if len(addresses) > MAX_EMAIL_ADDRESSES:
+        raise _tool_error(
+            {
+                "code": "invalid_arguments",
+                "message": (
+                    f"Siigo sends an invoice to at most {MAX_EMAIL_ADDRESSES} addresses; "
+                    f"this request has {len(addresses)}. Nothing was sent."
+                ),
+            }
+        )
 
 
 RISK_NOTES: dict[Risk, str] = {
@@ -439,6 +473,8 @@ class SiigoMCPServer(MCPServer[Any]):
         async def write_tool(
             approval: ElicitationResult[Approval], ctx: Context[Any, Any], **kwargs: Any
         ) -> str:
+            if endpoint.risk is Risk.OUTBOUND:
+                _check_outbound(kwargs.get("body"))
             request = self._approval_request(endpoint, kwargs, ctx)
             if endpoint.risk is Risk.PERMANENT:  # show the record as Siigo has it now
                 summary = await self._record_summary(endpoint, kwargs)

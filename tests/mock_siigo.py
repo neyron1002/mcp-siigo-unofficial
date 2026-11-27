@@ -38,6 +38,7 @@ RESOURCES = (
     "purchase-support-documents",
     "payment-receipts",
     "account-groups",
+    "webhooks",
 )
 CATALOGS: dict[str, list[dict[str, Any]]] = {
     "taxes": [{"id": 13156, "name": "IVA 19%", "type": "IVA", "percentage": 19, "active": True}],
@@ -85,6 +86,7 @@ class MockSiigo:
         self._lock = threading.Lock()
         self._invoice_number = 0
         self.idempotency: dict[tuple[str, str], str] = {}
+        self.mails: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------------ test helpers
     def expire_tokens(self) -> None:
@@ -138,6 +140,18 @@ class MockSiigo:
         resource = parts[0]
         if resource in CATALOGS and len(parts) == 1 and request.method == "GET":
             return httpx2.Response(200, json=CATALOGS[resource])
+        if resource == "invoices" and len(parts) == 3 and parts[2] == "mail":
+            if request.method != "POST" or parts[1] not in self.data["invoices"]:
+                return self._not_found(parts[1])
+            self.mails.append({"invoice": parts[1], **json.loads(request.content or b"{}")})
+            return httpx2.Response(201, json={"status": "sent", "observations": ""})
+        if resource == "webhooks" and len(parts) == 1 and request.method == "PUT":
+            body = json.loads(request.content or b"{}")
+            for item in self.data["webhooks"].values():
+                if item.get("topic") == body.get("topic"):  # the docs send no id
+                    item.update(body)
+                    return httpx2.Response(201, json=item)
+            return self._not_found(body.get("topic"))
         if resource == "invoices" and len(parts) == 3 and parts[2] == "annul":
             invoice = self.data["invoices"].get(parts[1])
             if request.method != "POST" or invoice is None:

@@ -106,6 +106,11 @@ WRITE_TOOLS: dict[str, str] = {
     "eliminar_factura_compra": "delete_purchase",
     "eliminar_documento_soporte": "delete_support_document",
     "eliminar_recibo_pago": "delete_payment_receipt",
+    # Phase 14: writes that send data outside Siigo (and deleting a webhook).
+    "enviar_factura_por_correo": "send_invoice_email",
+    "crear_webhook": "create_webhook",
+    "actualizar_webhook": "update_webhook",
+    "eliminar_webhook": "delete_webhook",
 }
 
 #: Risk level of each write tool (API coverage plan, Part 3). Writes not listed here
@@ -118,6 +123,10 @@ RISK: dict[str, str] = {
     "eliminar_factura_compra": "permanent",
     "eliminar_documento_soporte": "permanent",
     "eliminar_recibo_pago": "permanent",
+    "enviar_factura_por_correo": "outbound",
+    "crear_webhook": "outbound",
+    "actualizar_webhook": "outbound",
+    "eliminar_webhook": "permanent",
 }
 
 #: Writes left out on purpose (deletes, annulments, emails, batches, and resources
@@ -125,11 +134,10 @@ RISK: dict[str, str] = {
 EXCLUDED: frozenset[str] = frozenset(
     {
         "generar_token",
+        # Decision A5 (2026-11-27): not now. The result goes only to an https URL the
+        # user must own, the MCP can't read it, and one approval would send many
+        # invoices to the DIAN. Creating invoices one by one covers the same need.
         "crear_lote_facturas",
-        "enviar_factura_por_correo",
-        "crear_webhook",
-        "actualizar_webhook",
-        "eliminar_webhook",
     }
 )
 
