@@ -108,3 +108,32 @@ def test_every_write_tool_has_a_risk_level() -> None:
     for tool in data["tools"]:
         if not tool["read_only"]:
             assert tool["risk"] in {"change", "outbound", "permanent"}, tool["name"]
+
+
+def test_phase_12_tools_follow_the_docs() -> None:
+    catalog = load_catalog()
+    expected = {
+        "siigo_create_account_group": ("POST", "/v1/account-groups"),
+        "siigo_update_account_group": ("PUT", "/v1/account-groups/{id}"),
+        "siigo_update_invoice": ("PUT", "/v1/invoices/{id}"),
+        "siigo_create_quotation": ("POST", "/v1/quotations"),
+        "siigo_update_quotation": ("PUT", "/v1/quotations/{id}"),
+        "siigo_create_purchase": ("POST", "/v1/purchases"),
+        "siigo_update_purchase": ("PUT", "/v1/purchases/{id}"),
+        "siigo_create_support_document": ("POST", "/v1/purchase-support-documents"),
+        "siigo_update_support_document": ("PUT", "/v1/purchase-support-documents/{id}"),
+        "siigo_create_payment_receipt": ("POST", "/v1/payment-receipts"),
+        "siigo_create_payment_receipt_detailed": ("POST", "/v1/payment-receipts"),
+    }
+    for name, (method, path) in expected.items():
+        tool = catalog.get(name)
+        assert (tool.method, tool.path) == (method, path), name
+        assert tool.risk.value == "change", name
+        assert tool.body_schema is not None, name
+    update = _body("siigo_update_invoice")["properties"]
+    assert {"retentions", "advance_payment", "healthcare_company", "number"} <= set(update)
+    for name in ("siigo_create_purchase", "siigo_create_support_document"):
+        assert {"number", "retentions"} <= set(_body(name)["properties"])
+    assert "cost_center" in _body("siigo_create_payment_receipt")["properties"]
+    detailed = _body("siigo_create_payment_receipt_detailed")["properties"]["type"]
+    assert detailed["enum"] == ["Detailed"]

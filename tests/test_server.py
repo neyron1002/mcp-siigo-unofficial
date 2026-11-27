@@ -142,6 +142,18 @@ def test_catalog_scope() -> None:
         "siigo_create_voucher",
         "siigo_create_voucher_misc_income",
         "siigo_create_journal",
+        # Phase 12 (API coverage plan)
+        "siigo_create_account_group",
+        "siigo_update_account_group",
+        "siigo_update_invoice",
+        "siigo_create_quotation",
+        "siigo_update_quotation",
+        "siigo_create_purchase",
+        "siigo_update_purchase",
+        "siigo_create_support_document",
+        "siigo_update_support_document",
+        "siigo_create_payment_receipt",
+        "siigo_create_payment_receipt_detailed",
     } == WRITE_NAMES
     assert not any(t.method == "DELETE" for t in CATALOG.tools)
     assert all(t.path.startswith("/v1/") for t in CATALOG.tools)
@@ -840,3 +852,58 @@ async def test_risky_tool_descriptions(risky_server: SiigoMCPServer, switch: Wri
     assert "OUTSIDE SIIGO" in tools["siigo_send_invoice_email"]
     assert "CAN'T BE UNDONE" not in tools["siigo_create_invoice"]
     assert "OUTSIDE SIIGO" not in tools["siigo_create_invoice"]
+
+
+# ---------------------------------------------------------------------- phase 12 tools
+
+
+@pytest.mark.parametrize(
+    ("tool", "resource", "update"),
+    [
+        ("account_group", "account-groups", True),
+        ("quotation", "quotations", True),
+        ("purchase", "purchases", True),
+        ("support_document", "purchase-support-documents", True),
+        ("payment_receipt", "payment-receipts", False),
+        ("payment_receipt_detailed", "payment-receipts", False),
+    ],
+)
+async def test_new_create_and_update_tools_reach_siigo(
+    server: SiigoMCPServer,
+    switch: WriteSwitch,
+    mock_siigo: MockSiigo,
+    approver: ScriptedApprover,
+    tool: str,
+    resource: str,
+    update: bool,
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    async with Client(server) as client:
+        created = payload(await client.call_tool(f"siigo_create_{tool}", {"body": {"x": 1}}))
+        if update:
+            changed = payload(
+                await client.call_tool(
+                    f"siigo_update_{tool}", {"id": created["id"], "body": {"x": 2}}
+                )
+            )
+            assert changed == {"x": 2, "id": created["id"]}
+    assert created["x"] == 1
+    assert posts(mock_siigo)[0] == f"/v1/{resource}"
+    assert len(approver.requests) == (2 if update else 1)  # every write was approved
+
+
+async def test_update_invoice_reaches_siigo(
+    server: SiigoMCPServer, switch: WriteSwitch, mock_siigo: MockSiigo
+) -> None:
+    switch.enable(accepted_responsibility=True)
+    (invoice,) = mock_siigo.seed("invoices", 1)
+    async with Client(server) as client:
+        result = payload(
+            await client.call_tool(
+                "siigo_update_invoice", {"id": invoice["id"], "body": {"observations": "new"}}
+            )
+        )
+    assert result == {"observations": "new", "id": invoice["id"]}
+    request = mock_siigo.requests[-1]
+    assert request.method == "PUT"
+    assert "Idempotency-Key" not in request.headers  # only POST creations carry it

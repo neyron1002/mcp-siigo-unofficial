@@ -75,8 +75,7 @@ READ_TOOLS: dict[str, str] = {
     "listar_webhooks": "list_webhooks",
 }
 
-#: Write tools: only the scope of plan section 5 (create/update customers and
-#: products; create invoices, credit notes, cash receipts, and journals).
+#: Write tools: plan section 5, extended by the API coverage plan of 2026-11-27.
 WRITE_TOOLS: dict[str, str] = {
     "crear_cliente": "create_customer",
     "actualizar_cliente": "update_customer",
@@ -87,6 +86,18 @@ WRITE_TOOLS: dict[str, str] = {
     "crear_recibo_caja": "create_voucher",
     "crear_recibo_caja_otros_ingresos": "create_voucher_misc_income",
     "crear_comprobante_contable": "create_journal",
+    # Phase 12 (API coverage plan): new create and update tools.
+    "crear_grupo_inventario": "create_account_group",
+    "actualizar_grupo_inventario": "update_account_group",
+    "actualizar_factura": "update_invoice",
+    "crear_cotizacion": "create_quotation",
+    "actualizar_cotizacion": "update_quotation",
+    "crear_factura_compra": "create_purchase",
+    "actualizar_factura_compra": "update_purchase",
+    "crear_documento_soporte": "create_support_document",
+    "actualizar_documento_soporte": "update_support_document",
+    "crear_recibo_pago": "create_payment_receipt",
+    "crear_recibo_pago_avanzado": "create_payment_receipt_detailed",
 }
 
 #: Risk level of each write tool (API coverage plan, Part 3). Writes not listed here
@@ -99,24 +110,13 @@ EXCLUDED: frozenset[str] = frozenset(
     {
         "generar_token",
         "eliminar_producto",
-        "crear_grupo_inventario",
-        "actualizar_grupo_inventario",
-        "actualizar_factura",
         "crear_lote_facturas",
         "eliminar_factura",
         "anular_factura",
         "enviar_factura_por_correo",
-        "crear_cotizacion",
-        "actualizar_cotizacion",
         "eliminar_cotizacion",
-        "crear_factura_compra",
-        "actualizar_factura_compra",
         "eliminar_factura_compra",
-        "crear_documento_soporte",
-        "actualizar_documento_soporte",
         "eliminar_documento_soporte",
-        "crear_recibo_pago",
-        "crear_recibo_pago_avanzado",
         "eliminar_recibo_pago",
         "crear_webhook",
         "actualizar_webhook",

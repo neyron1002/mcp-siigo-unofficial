@@ -2647,6 +2647,127 @@ endpoints:
         type: object
         properties: {}
         description: 'Campos adicionales como: Orden de compra y Orden de entrega.'
+      number:
+        type: number
+        description: Consecutivo de la factura. Si se envía, debe ser el mismo de la factura (no se puede cambiar).
+        example: 25
+      retentions:
+        type: array
+        description: Retenciones de la factura (ReteICA, ReteIVA o Autorretención). Los id se consultan en /v1/taxes.
+        items:
+          type: object
+          properties:
+            id:
+              type: number
+              description: Identificador del impuesto de retención.
+              example: 13156
+          required:
+          - id
+      advance_payment:
+        type: number
+        description: Valor de anticipo o copago. Positivo, máximo 2 decimales, no mayor que el total. El tipo
+          de factura debe tener esta opción activa en Siigo Nube.
+        example: 10000
+      healthcare_company:
+        type: object
+        description: 'Campos del sector salud (Resolución 948). Solo para tipos de comprobante marcados para
+          el sector salud. Reglas: con contract_number no se envían policy_number ni nonContractInvoiceReason;
+          sin contract_number, nonContractInvoiceReason es obligatorio; con policy_number no se envía contract_number
+          y nonContractInvoiceReason es obligatorio. En SS-CUFE se envía al menos uno de copayment, coinsurance,
+          cost_sharing o recovery_charge. Cambios vigentes desde el 2026-07-01.'
+        properties:
+          operation_type:
+            type: string
+            enum:
+            - SS-CUFE
+            - SS-SinAporte
+            - SS-Recaudo
+            description: Tipo de operación del sector salud. Obligatorio en facturas del sector salud.
+            example: SS-CUFE
+          period_start:
+            type: string
+            description: Inicio del periodo de facturación, formato yyyy-MM-dd. Obligatorio en SS-CUFE y SS-SinAporte.
+            example: '2024-02-14'
+          period_end:
+            type: string
+            description: Fin del periodo de facturación, formato yyyy-MM-dd. Obligatorio en SS-CUFE y SS-SinAporte.
+            example: '2024-03-16'
+          payment_method:
+            type: string
+            enum:
+            - '01'
+            - '02'
+            - '03'
+            - '04'
+            description: 'Modalidad de pago (SS-CUFE y SS-SinAporte): 01 pago individual por caso, conjunto
+              integral de atenciones, paquete o canasta; 02 pago global prospectivo; 03 pago por capitación;
+              04 pago por evento. La opción 05 fue eliminada.'
+            example: '04'
+          service_plan:
+            type: string
+            enum:
+            - '02'
+            - '03'
+            - '04'
+            - '05'
+            - '06'
+            - '07'
+            - 08
+            - 09
+            - '10'
+            - '11'
+            - '12'
+            - '13'
+            - '14'
+            - '15'
+            - '16'
+            - '17'
+            description: 'Cobertura o plan de servicios (SS-CUFE y SS-SinAporte): 02 presupuesto máximo; 03
+              prima EPS/EOC, no asegurados SOAT; 04 póliza SOAT; 05 ARL; 06 ADRES; 07 salud pública; 08 entidad
+              territorial, recursos de oferta; 09 urgencias población migrante; 10 plan complementario; 11 medicina
+              prepagada; 12 otras pólizas; 13 régimen especial o excepción; 14 Fondo Nacional de Salud de las
+              Personas Privadas de la Libertad; 15 particular; 16 UPC régimen contributivo; 17 UPC régimen subsidiado.
+              La opción 01 fue eliminada.'
+            example: '16'
+          policy_number:
+            type: string
+            description: Número de póliza (SS-CUFE y SS-SinAporte), máximo 50 caracteres.
+            example: ZAS321456677
+          contract_number:
+            type: string
+            description: Número de contrato (SS-CUFE y SS-SinAporte), máximo 64 caracteres.
+            example: CON1245636
+          nonContractInvoiceReason:
+            type: string
+            enum:
+            - '01'
+            - '02'
+            - '03'
+            - '04'
+            - '05'
+            - '06'
+            description: 'Motivo de factura sin contrato: 01 urgencias; 02 a cargo de ADRES, aseguradoras SOAT
+              o planes voluntarios; 03 fallos de tutela u órdenes judiciales; 04 portabilidad o asignación masiva
+              de afiliados; 05 casos excepcionales sin contrato; 06 recuperación de órganos para trasplante.'
+            example: '03'
+          copayment:
+            type: number
+            description: Copago. Solo para SS-CUFE. Positivo, máximo 10 enteros y 2 decimales.
+            example: 22505.2
+          coinsurance:
+            type: number
+            description: Cuota moderadora. Solo para SS-CUFE. Positivo, máximo 10 enteros y 2 decimales.
+            example: 22505.2
+          cost_sharing:
+            type: number
+            description: Pagos compartidos. Solo para SS-CUFE. Positivo, máximo 10 enteros y 2 decimales.
+            example: 22505.2
+          recovery_charge:
+            type: number
+            description: Cuota de recuperación. Solo para SS-CUFE. Positivo, máximo 10 enteros y 2 decimales.
+            example: 22505.2
+        required:
+        - operation_type
     required:
     - document
     - date
@@ -3465,6 +3586,11 @@ endpoints:
           - quantity
           - price
         description: Productos o Servicios asociados a la cotización.
+      number:
+        type: number
+        description: Consecutivo del comprobante. Opcional; si se envía no debe existir en Siigo Nube (obligatorio
+          si el tipo de cotización tiene numeración manual).
+        example: 25
     required:
     - document
     - date
@@ -3643,6 +3769,11 @@ endpoints:
           - quantity
           - price
         description: Productos o Servicios asociados a la cotización.
+      number:
+        type: number
+        description: Consecutivo del comprobante. Opcional; si se envía no debe existir en Siigo Nube (obligatorio
+          si el tipo de cotización tiene numeración manual).
+        example: 25
     required:
     - document
     - date
@@ -4719,6 +4850,22 @@ endpoints:
           required:
           - value
         description: Formas de pago asociadas a la factura.
+      number:
+        type: number
+        description: Consecutivo del comprobante. Opcional; si se envía no debe existir en Siigo Nube.
+        example: 25
+      retentions:
+        type: array
+        description: Retenciones (ReteICA, ReteIVA). Los id se consultan en /v1/taxes.
+        items:
+          type: object
+          properties:
+            id:
+              type: number
+              description: Identificador del impuesto de retención.
+              example: 13156
+          required:
+          - id
     required:
     - document
     - date
@@ -4959,6 +5106,22 @@ endpoints:
           required:
           - value
         description: Formas de pago asociadas a la factura.
+      number:
+        type: number
+        description: Consecutivo de la factura de compra. No se puede cambiar.
+        example: 25
+      retentions:
+        type: array
+        description: Retenciones (ReteICA, ReteIVA). Los id se consultan en /v1/taxes.
+        items:
+          type: object
+          properties:
+            id:
+              type: number
+              description: Identificador del impuesto de retención.
+              example: 13156
+          required:
+          - id
     required:
     - document
     - date
@@ -5319,6 +5482,22 @@ endpoints:
           required:
           - value
         description: Formas de pago asociadas a la factura.
+      number:
+        type: number
+        description: Consecutivo del comprobante. Opcional; si se envía no debe existir en Siigo Nube.
+        example: 25
+      retentions:
+        type: array
+        description: Retenciones (ReteICA, ReteIVA o Autorretención). Los id se consultan en /v1/taxes.
+        items:
+          type: object
+          properties:
+            id:
+              type: number
+              description: Identificador del impuesto de retención.
+              example: 13156
+          required:
+          - id
     required:
     - document
     - date
@@ -5578,6 +5757,22 @@ endpoints:
           required:
           - value
         description: Formas de pago asociadas a la factura.
+      number:
+        type: number
+        description: Consecutivo del comprobante. Opcional; si se envía no debe existir en Siigo Nube.
+        example: 25
+      retentions:
+        type: array
+        description: Retenciones (ReteICA, ReteIVA o Autorretención). Los id se consultan en /v1/taxes.
+        items:
+          type: object
+          properties:
+            id:
+              type: number
+              description: Identificador del impuesto de retención.
+              example: 13156
+          required:
+          - id
     required:
     - document
     - date
@@ -6428,6 +6623,10 @@ endpoints:
         type: string
         description: Comentarios para agregar información al recibo de pago/egreso.
         example: Observaciones
+      cost_center:
+        type: number
+        description: Identificador del centro de costos. Opcional, debe existir en Siigo Nube y estar activo.
+        example: 235
     required:
     - document
     - date
