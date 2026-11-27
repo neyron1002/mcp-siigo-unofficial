@@ -6,4 +6,4 @@ not affiliated with Siigo S.A.S.
 
 __all__ = ["__version__"]
 
-__version__ = "0.2.1-rc.1"
+__version__ = "0.3.0-rc.1"
