@@ -7,6 +7,7 @@ Qt runs offscreen; every AI app lives in a fake home folder with fake commands.
 
 from __future__ import annotations
 
+import gc
 import json
 import os
 import threading
@@ -48,6 +49,7 @@ from test_clients import (
     installer,
     make_env,
     make_exe,
+    make_windows_desktop,
 )
 
 
@@ -55,6 +57,21 @@ from test_clients import (
 def qapp() -> QApplication:
     existing = QApplication.instance()
     return existing if isinstance(existing, QApplication) else QApplication([])
+
+
+@pytest.fixture(autouse=True)
+def free_windows_on_the_gui_thread(qapp: QApplication) -> Iterator[None]:
+    """Free the windows of earlier tests here, on the GUI thread.
+
+    Python's garbage collector runs on whichever thread is allocating. Left alone,
+    it can free an old window on a later test's worker thread, and Qt then crashes
+    (seen on Linux and macOS CI).
+    """
+    gc.collect()
+    QCoreApplication.processEvents()
+    yield
+    gc.collect()
+    QCoreApplication.processEvents()
 
 
 @pytest.fixture
@@ -146,6 +163,24 @@ def test_connect_writes_settings_and_shows_restart(
     wait_idle(window)
     assert restarted == [True]
     assert window.result_label.text() == "Claude Desktop was restarted."
+
+
+@pytest.mark.parametrize("install", ["classic", "msix", "msix-data"])
+def test_windows_claude_desktop_is_found_and_connected(
+    qapp: QApplication, tr: Translator, home: Path, bin_dir: Path, install: str
+) -> None:
+    """Both Windows install types: the classic installer and the MSIX package."""
+    settings = make_windows_desktop(home, install) / "claude_desktop_config.json"
+    env = make_env(home, bin_dir, FakeRunner(home), platform="win32")
+    window = ConnectWindow(installer(env), tr, lambda: True)
+    row = window.rows["claude-desktop"]
+    assert row.box.isEnabled()
+    assert row.box.isChecked()
+    assert row.state.text() == "Found"
+    window.connect_selected()
+    wait_idle(window)
+    assert json.loads(settings.read_text())["mcpServers"]["siigo"]["args"] == ["--stdio"]
+    assert window.rows["claude-desktop"].state.text() == "Connected · stdio (recommended)"
 
 
 def test_http_choice_and_switch_to_stdio(

@@ -294,6 +294,81 @@ def test_claude_desktop_paths(home: Path, bin_dir: Path, platform: str, relative
     assert app.is_installed(env)
 
 
+MSIX_FAMILY = "Claude_pzs8sxrjxfjjc"
+MSIX_PACKAGE = f"AppData/Local/Packages/{MSIX_FAMILY}"
+MSIX_CACHE_DIR = f"{MSIX_PACKAGE}/LocalCache/Roaming/Claude"
+MSIX_DATA_DIR = "AppData/Local/Claude-Data/claude_pzs8sxrjxfjjc"
+DATA_LEFT = ".user-data-left.claude_pzs8sxrjxfjjc"
+
+
+def make_windows_desktop(home: Path, install: str) -> Path:
+    """Lay out one Windows install type of Claude Desktop; return its settings folder."""
+    if install == "classic":
+        (home / "AppData/Local/AnthropicClaude").mkdir(parents=True)
+        return home / "AppData/Roaming/Claude"
+    (home / MSIX_PACKAGE / "LocalState").mkdir(parents=True)
+    if install == "msix":
+        return home / MSIX_CACHE_DIR
+    # msix-data: newer versions moved the settings and left a note in the old folders.
+    for old in (home / MSIX_CACHE_DIR, home / "AppData/Roaming/Claude"):
+        old.mkdir(parents=True)
+        (old / DATA_LEFT).write_text("{}")
+    data = home / MSIX_DATA_DIR
+    data.mkdir(parents=True)
+    return data
+
+
+@pytest.mark.parametrize("install", ["classic", "msix", "msix-data"])
+def test_claude_desktop_windows_install_types(home: Path, bin_dir: Path, install: str) -> None:
+    env = make_env(home, bin_dir, FakeRunner(home), "win32")
+    app = app_by_id("claude-desktop")
+    assert not app.is_installed(env)
+    settings_dir = make_windows_desktop(home, install)
+    assert app.is_installed(env)
+    assert app.config_path(env) == settings_dir / "claude_desktop_config.json"
+    [state] = installer(env).status(["claude-desktop"])
+    assert state.state == "not_connected"
+    assert state.config_path == str(settings_dir / "claude_desktop_config.json")
+
+
+@pytest.mark.parametrize("install", ["classic", "msix", "msix-data"])
+def test_claude_desktop_windows_connect_and_disconnect_keep_other_servers(
+    home: Path, bin_dir: Path, install: str
+) -> None:
+    env = make_env(home, bin_dir, FakeRunner(home), "win32")
+    path = make_windows_desktop(home, install) / "claude_desktop_config.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"preferences": {"x": True}, "mcpServers": {"other": OTHER_SERVER}}))
+    inst = installer(env)
+    [result] = inst.connect(["claude-desktop"])
+    assert result.outcome == "connected"
+    data = json.loads(path.read_text())
+    assert data["preferences"] == {"x": True}
+    assert data["mcpServers"] == {
+        "other": OTHER_SERVER,
+        "siigo": {"command": LAUNCHER[0], "args": ["--stdio"]},
+    }
+    [result] = inst.disconnect(["claude-desktop"])
+    assert result.outcome == "disconnected"
+    data = json.loads(path.read_text())
+    assert data == {"preferences": {"x": True}, "mcpServers": {"other": OTHER_SERVER}}
+    # Only the file Claude Desktop reads was changed; the old folders keep just their note.
+    if install == "msix-data":
+        for old in (home / MSIX_CACHE_DIR, home / "AppData/Roaming/Claude"):
+            assert [p.name for p in old.iterdir()] == [DATA_LEFT]
+
+
+def test_claude_desktop_msix_first_connect_creates_the_settings(home: Path, bin_dir: Path) -> None:
+    """A freshly installed MSIX package has no settings folder yet: it is created."""
+    env = make_env(home, bin_dir, FakeRunner(home), "win32")
+    make_windows_desktop(home, "msix")
+    [result] = installer(env).connect(["claude-desktop"])
+    assert result.outcome == "connected"
+    written = json.loads((home / MSIX_CACHE_DIR / "claude_desktop_config.json").read_text())
+    assert written["mcpServers"]["siigo"] == {"command": LAUNCHER[0], "args": ["--stdio"]}
+    assert not (home / "AppData/Roaming/Claude").exists()
+
+
 def test_claude_desktop_is_not_offered_on_linux(home: Path, bin_dir: Path) -> None:
     env = make_env(home, bin_dir, FakeRunner(home), "linux")
     (home / ".config" / "Claude").mkdir(parents=True)
