@@ -7,6 +7,7 @@ Qt runs offscreen; every AI app lives in a fake home folder with fake commands.
 
 from __future__ import annotations
 
+import gc
 import json
 import os
 import threading
@@ -56,6 +57,21 @@ from test_clients import (
 def qapp() -> QApplication:
     existing = QApplication.instance()
     return existing if isinstance(existing, QApplication) else QApplication([])
+
+
+@pytest.fixture(autouse=True)
+def free_windows_on_the_gui_thread(qapp: QApplication) -> Iterator[None]:
+    """Free the windows of earlier tests here, on the GUI thread.
+
+    Python's garbage collector runs on whichever thread is allocating. Left alone,
+    it can free an old window on a later test's worker thread, and Qt then crashes
+    (seen on Linux and macOS CI).
+    """
+    gc.collect()
+    QCoreApplication.processEvents()
+    yield
+    gc.collect()
+    QCoreApplication.processEvents()
 
 
 @pytest.fixture
