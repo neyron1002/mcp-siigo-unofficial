@@ -34,6 +34,10 @@ The client sends a wrong or old key (HTTP setups only). Open **AI apps ▸ Conne
 
 If the key leaked, make a new one: quit the app, delete `vault.sqlite3` (and `vault.sqlite3-wal` and `vault.sqlite3-shm`, if present) from the app folder ([Where your data is](usage.md#where-your-data-is)), and start the app. It creates a new key; type your Siigo credentials again and copy the new client setups.
 
+## Connect AI apps does not find Claude Desktop on Windows
+
+Versions up to 0.3.0 look only for the classic Claude Desktop installer. Claude Desktop from the Microsoft Store (an MSIX package) keeps its settings in another folder, so these versions show it as not installed, or connect a settings file that Claude Desktop does not read. Version 0.3.1 and later find both install types. Update, open **Connect AI apps** again, connect Claude Desktop, and restart it.
+
 ## An AI app doesn't show the Siigo tools after Connect
 
 - Open a **new** session: running sessions don't reload their servers. Claude Desktop must be restarted (**Restart Claude Desktop** in the window, or quit and reopen it).
